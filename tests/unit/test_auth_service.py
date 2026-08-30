@@ -22,8 +22,12 @@ class FakeUserRepository:
     async def get_by_id(self, user_id: uuid.UUID) -> SimpleNamespace | None:
         return next((u for u in self._by_email.values() if u.id == user_id), None)
 
-    async def create(self, *, email: str, password_hash: str, role: str) -> SimpleNamespace:
-        user = SimpleNamespace(id=uuid.uuid4(), email=email, password_hash=password_hash, role=role)
+    async def create(
+        self, *, email: str, name: str, password_hash: str, role: str
+    ) -> SimpleNamespace:
+        user = SimpleNamespace(
+            id=uuid.uuid4(), email=email, name=name, password_hash=password_hash, role=role
+        )
         self._by_email[email] = user
         return user
 
@@ -31,24 +35,33 @@ class FakeUserRepository:
 async def test_register_user_creates_account_with_hashed_password() -> None:
     repo = FakeUserRepository()
 
-    user = await register_user(repo, email="a@example.com", password="s3cret!!", role="renter")
+    user = await register_user(
+        repo, email="a@example.com", name="Alex", password="s3cret!!", role="renter"
+    )
 
     assert user.email == "a@example.com"
+    assert user.name == "Alex"
     assert user.password_hash != "s3cret!!"
     assert verify_password("s3cret!!", user.password_hash)
 
 
 async def test_register_user_rejects_duplicate_email() -> None:
     repo = FakeUserRepository()
-    await register_user(repo, email="a@example.com", password="s3cret!!", role="renter")
+    await register_user(
+        repo, email="a@example.com", name="Alex", password="s3cret!!", role="renter"
+    )
 
     with pytest.raises(EmailAlreadyRegisteredError):
-        await register_user(repo, email="a@example.com", password="different", role="host")
+        await register_user(
+            repo, email="a@example.com", name="Someone Else", password="different", role="host"
+        )
 
 
 async def test_authenticate_user_succeeds_with_correct_password() -> None:
     repo = FakeUserRepository()
-    await register_user(repo, email="a@example.com", password="s3cret!!", role="renter")
+    await register_user(
+        repo, email="a@example.com", name="Alex", password="s3cret!!", role="renter"
+    )
 
     user = await authenticate_user(repo, email="a@example.com", password="s3cret!!")
 
@@ -57,7 +70,9 @@ async def test_authenticate_user_succeeds_with_correct_password() -> None:
 
 async def test_authenticate_user_rejects_wrong_password() -> None:
     repo = FakeUserRepository()
-    await register_user(repo, email="a@example.com", password="s3cret!!", role="renter")
+    await register_user(
+        repo, email="a@example.com", name="Alex", password="s3cret!!", role="renter"
+    )
 
     with pytest.raises(InvalidCredentialsError):
         await authenticate_user(repo, email="a@example.com", password="wrong")

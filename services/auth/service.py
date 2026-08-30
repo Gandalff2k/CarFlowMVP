@@ -12,12 +12,16 @@ class InvalidCredentialsError(Exception):
     pass
 
 
-async def register_user(repo: UserRepository, *, email: str, password: str, role: str) -> User:
+async def register_user(
+    repo: UserRepository, *, email: str, name: str, password: str, role: str
+) -> User:
     existing = await repo.get_by_email(email)
     if existing is not None:
         raise EmailAlreadyRegisteredError(email)
     try:
-        return await repo.create(email=email, password_hash=hash_password(password), role=role)
+        return await repo.create(
+            email=email, name=name, password_hash=hash_password(password), role=role
+        )
     except DuplicateEmailError as exc:
         raise EmailAlreadyRegisteredError(email) from exc
 

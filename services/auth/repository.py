@@ -23,12 +23,12 @@ class UserRepository:
         result = await self._session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
-    async def create(self, *, email: str, password_hash: str, role: str) -> User:
-        user = User(email=email, password_hash=password_hash, role=role)
+    async def create(self, *, email: str, name: str, password_hash: str, role: str) -> User:
+        user = User(email=email, name=name, password_hash=password_hash, role=role)
         self._session.add(user)
         try:
             await self._session.flush()
         except IntegrityError as exc:
-           
+
             raise DuplicateEmailError(email) from exc
         return user

@@ -9,6 +9,7 @@ from services.auth.app import create_app
 from services.auth.config import AuthSettings
 
 PASSWORD = "correct horse battery staple"
+NAME = "Alex Renter"
 
 
 def _unique_email() -> str:
@@ -18,7 +19,7 @@ def _unique_email() -> str:
 def _register(client: TestClient, email: str, idempotency_key: str | None = None) -> httpx.Response:
     return client.post(
         "/auth/register",
-        json={"email": email, "password": PASSWORD, "role": "renter"},
+        json={"email": email, "name": NAME, "password": PASSWORD, "role": "renter"},
         headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())},
     )
 
@@ -41,6 +42,7 @@ def test_register_then_login_then_call_protected_route(client: TestClient) -> No
     register_response = _register(client, email)
     assert register_response.status_code == 201
     assert register_response.json()["email"] == email
+    assert register_response.json()["name"] == NAME
 
     login_response = client.post("/auth/login", json={"email": email, "password": PASSWORD})
     assert login_response.status_code == 200
@@ -102,7 +104,8 @@ def test_register_rejects_key_reuse_with_different_payload(client: TestClient) -
 
 def test_register_requires_idempotency_key(client: TestClient) -> None:
     response = client.post(
-        "/auth/register", json={"email": _unique_email(), "password": PASSWORD, "role": "renter"}
+        "/auth/register",
+        json={"email": _unique_email(), "name": NAME, "password": PASSWORD, "role": "renter"},
     )
 
     assert response.status_code == 400

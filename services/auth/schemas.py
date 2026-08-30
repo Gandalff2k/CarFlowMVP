@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class RegisterRequest(BaseModel):
     email: EmailStr
+    name: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=8)
     role: Literal["renter", "host"] = "renter"
 
@@ -12,6 +13,7 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    name: str
     role: str
 
 

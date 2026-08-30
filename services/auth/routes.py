@@ -54,17 +54,20 @@ def create_router(
         repo = UserRepository(session)
         try:
             user = await register_user(
-                repo, email=payload.email, password=payload.password, role=payload.role
+                repo,
+                email=payload.email,
+                name=payload.name,
+                password=payload.password,
+                role=payload.role,
             )
         except EmailAlreadyRegisteredError as exc:
             await session.rollback()
             raise HTTPException(status_code=409, detail="email already registered") from exc
 
-        body = UserResponse(id=str(user.id), email=user.email, role=user.role)
+        body = UserResponse(id=str(user.id), email=user.email, name=user.name, role=user.role)
         response_json = body.model_dump_json()
         await guard.store(response_json, 201)
         if guard.is_replay:
-            # Lost a concurrent race on this key; return what the winner persisted.
             return Response(
                 content=guard.replay_body,
                 media_type="application/json",
@@ -123,6 +126,6 @@ def create_router(
         if user is None:
             raise HTTPException(status_code=401, detail="user no longer exists")
 
-        return UserResponse(id=str(user.id), email=user.email, role=user.role)
+        return UserResponse(id=str(user.id), email=user.email, name=user.name, role=user.role)
 
     return router

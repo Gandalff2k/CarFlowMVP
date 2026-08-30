@@ -1,13 +1,16 @@
+import asyncio
 import json
 import logging
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from services.auth.config import AuthSettings
 from services.auth.routes import create_router
 from shared.db import create_engine, create_session_factory, session_dependency
-from shared.idempotency import idempotency_guard_dependency
+from shared.idempotency import idempotency_guard_dependency, run_idempotency_cleanup_loop
 from shared.telemetry import add_health_endpoints, add_http_metrics
 from shared.tracing import configure_telemetry
 
@@ -28,7 +31,19 @@ def create_app(settings: AuthSettings | None = None) -> FastAPI:
     get_session = session_dependency(session_factory)
     get_guard = idempotency_guard_dependency(get_session)
 
-    app = FastAPI(title="CarFlow auth")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        cleanup_task = asyncio.create_task(run_idempotency_cleanup_loop(session_factory))
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+    app = FastAPI(title="CarFlow auth", lifespan=lifespan)
     add_health_endpoints(app)
     add_http_metrics(app, service_settings.service_name)
     configure_telemetry(
