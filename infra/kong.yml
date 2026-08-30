@@ -1,0 +1,39 @@
+_format_version: "3.0"
+
+services:
+  - name: auth-service
+    url: http://auth:8000
+    routes:
+      - name: auth-public
+        paths: ["/auth/register", "/auth/login", "/auth/refresh"]
+        strip_path: false
+      - name: auth-protected
+        paths: ["/auth/me"]
+        strip_path: false
+        plugins:
+          - name: jwt
+
+# key/secret here must match auth's JWT_ISSUER / JWT_SECRET env vars.
+consumers:
+  - username: carflow-users
+    jwt_secrets:
+      - key: carflow-auth
+        secret: dev-secret
+        algorithm: HS256
+
+plugins:
+  - name: cors
+    config:
+      origins: ["*"]
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+      headers: ["Authorization", "Content-Type", "Idempotency-Key"]
+      credentials: false
+  - name: rate-limiting
+    config:
+      minute: 60
+      policy: local
+  - name: correlation-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid
+      echo_downstream: true

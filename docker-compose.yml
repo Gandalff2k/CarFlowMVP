@@ -6,6 +6,7 @@ services:
       POSTGRES_PASSWORD: carflow
       POSTGRES_DB: carflow
     ports: ["5432:5432"]
+    volumes: ["./infra/sql/init:/docker-entrypoint-initdb.d:ro"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U carflow -d carflow"]
       interval: 5s
@@ -35,7 +36,7 @@ services:
       retries: 12
 
   debezium:
-    image: debezium/connect:2.7
+    image: debezium/connect:2.7.3.Final
     ports: ["8083:8083"]
     depends_on:
       kafka: {condition: service_healthy}
@@ -93,15 +94,10 @@ services:
     ports: ["4317:4317", "4318:4318"]
     depends_on:
       jaeger: {condition: service_healthy}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/ >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
 
   jaeger:
-    image: jaegertracing/all-in-one:1.62
-    ports: ["16686:16686", "4317:4317"]
+    image: jaegertracing/all-in-one:1.62.0
+    ports: ["16686:16686"]
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     healthcheck:
@@ -116,6 +112,7 @@ services:
     volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
     depends_on:
       hello: {condition: service_healthy}
+      auth: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null || exit 1"]
       interval: 10s
@@ -142,9 +139,49 @@ services:
       SERVICE_NAME: hello
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
-      otel-collector: {condition: service_healthy}
+      otel-collector: {condition: service_started}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    ports: ["8001:8000"]
+    environment:
+      SERVICE_NAME: auth
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      DATABASE_URL: postgresql+asyncpg://carflow:carflow@postgres:5432/auth
+      JWT_SECRET: dev-secret
+      JWT_ISSUER: carflow-auth
+    depends_on:
+      postgres: {condition: service_healthy}
+      otel-collector: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kong:
+    image: kong:3.8
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    volumes: ["./infra/kong.yml:/kong/declarative/kong.yml:ro"]
+    ports: ["8080:8000", "8443:8443", "8444:8001"]
+    depends_on:
+      auth: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "kong", "health"]
       interval: 10s
       timeout: 5s
       retries: 10
