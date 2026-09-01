@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Callable
 
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.auth.config import AuthSettings
@@ -14,7 +14,6 @@ from services.auth.schemas import (
     TokenResponse,
     UserResponse,
 )
-from services.auth.security import decode_token
 from services.auth.service import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
@@ -22,13 +21,8 @@ from services.auth.service import (
     issue_token_pair,
     register_user,
 )
-from shared.idempotency import IdempotencyGuard
-
-
-def _bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    return authorization.split(" ", 1)[1]
+from shared.idempotency import IdempotencyGuard, respond_idempotently
+from shared.jwt_auth import claims_dependency, decode_token
 
 
 def create_router(
@@ -37,6 +31,9 @@ def create_router(
     get_guard: Callable,
 ) -> APIRouter:
     router = APIRouter()
+    get_access_claims = claims_dependency(
+        secret=settings.jwt_secret, issuer=settings.jwt_issuer, token_type="access"
+    )
 
     @router.post("/register", status_code=201)
     async def register(
@@ -44,36 +41,25 @@ def create_router(
         session: AsyncSession = Depends(get_session),
         guard: IdempotencyGuard = Depends(get_guard),
     ) -> Response:
-        if guard.is_replay:
-            return Response(
-                content=guard.replay_body,
-                media_type="application/json",
-                status_code=guard.replay_status,
-            )
-
         repo = UserRepository(session)
-        try:
-            user = await register_user(
-                repo,
-                email=payload.email,
-                name=payload.name,
-                password=payload.password,
-                role=payload.role,
-            )
-        except EmailAlreadyRegisteredError as exc:
-            await session.rollback()
-            raise HTTPException(status_code=409, detail="email already registered") from exc
 
-        body = UserResponse(id=str(user.id), email=user.email, name=user.name, role=user.role)
-        response_json = body.model_dump_json()
-        await guard.store(response_json, 201)
-        if guard.is_replay:
-            return Response(
-                content=guard.replay_body,
-                media_type="application/json",
-                status_code=guard.replay_status,
-            )
-        return Response(content=response_json, media_type="application/json", status_code=201)
+        async def build() -> str:
+            try:
+                user = await register_user(
+                    repo,
+                    email=payload.email,
+                    name=payload.name,
+                    password=payload.password,
+                    role=payload.role,
+                )
+            except EmailAlreadyRegisteredError as exc:
+                await session.rollback()
+                raise HTTPException(status_code=409, detail="email already registered") from exc
+            return UserResponse(
+                id=str(user.id), email=user.email, name=user.name, role=user.role
+            ).model_dump_json()
+
+        return await respond_idempotently(guard, 201, build)
 
     @router.post("/login", response_model=TokenResponse)
     async def login(
@@ -111,16 +97,8 @@ def create_router(
     @router.get("/me", response_model=UserResponse)
     async def me(
         session: AsyncSession = Depends(get_session),
-        authorization: str | None = Header(default=None),
+        claims: dict = Depends(get_access_claims),
     ) -> UserResponse:
-        token = _bearer_token(authorization)
-        try:
-            claims = decode_token(token, secret=settings.jwt_secret, issuer=settings.jwt_issuer)
-        except pyjwt.InvalidTokenError as exc:
-            raise HTTPException(status_code=401, detail="invalid access token") from exc
-        if claims.get("type") != "access":
-            raise HTTPException(status_code=401, detail="not an access token")
-
         repo = UserRepository(session)
         user = await repo.get_by_id(uuid.UUID(claims["sub"]))
         if user is None:

@@ -8,3 +8,6 @@ scrape_configs:
   - job_name: auth
     static_configs:
       - targets: [auth:8000]
+  - job_name: listing
+    static_configs:
+      - targets: [listing:8000]

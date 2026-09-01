@@ -12,6 +12,14 @@ services:
         strip_path: false
         plugins:
           - name: jwt
+  - name: listing-service
+    url: http://listing:8000
+    routes:
+      - name: listing-protected
+        paths: ["/listing"]
+        strip_path: false
+        plugins:
+          - name: jwt
 
 # key/secret here must match auth's JWT_ISSUER / JWT_SECRET env vars.
 consumers:

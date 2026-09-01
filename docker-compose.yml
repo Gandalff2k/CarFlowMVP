@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    command: ["postgres", "-c", "wal_level=logical"]
     environment:
       POSTGRES_USER: carflow
       POSTGRES_PASSWORD: carflow
@@ -113,6 +114,7 @@ services:
     depends_on:
       hello: {condition: service_healthy}
       auth: {condition: service_healthy}
+      listing: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null || exit 1"]
       interval: 10s
@@ -166,6 +168,26 @@ services:
       timeout: 5s
       retries: 10
 
+  listing:
+    build:
+      context: .
+      dockerfile: services/listing/Dockerfile
+    ports: ["8002:8000"]
+    environment:
+      SERVICE_NAME: listing
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      DATABASE_URL: postgresql+asyncpg://carflow:carflow@postgres:5432/listing
+      JWT_SECRET: dev-secret
+      JWT_ISSUER: carflow-auth
+    depends_on:
+      postgres: {condition: service_healthy}
+      otel-collector: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   kong:
     image: kong:3.8
     environment:
@@ -180,6 +202,7 @@ services:
     ports: ["8080:8000", "8443:8443", "8444:8001"]
     depends_on:
       auth: {condition: service_healthy}
+      listing: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s

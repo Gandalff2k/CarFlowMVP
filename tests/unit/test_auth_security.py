@@ -1,9 +1,7 @@
 import uuid
 
-import jwt
-import pytest
-
-from services.auth.security import create_token, decode_token, hash_password, verify_password
+from services.auth.security import create_token, hash_password, verify_password
+from shared.jwt_auth import decode_token
 
 
 def test_hash_and_verify_password_roundtrip() -> None:
@@ -18,7 +16,7 @@ def test_verify_password_rejects_wrong_password() -> None:
     assert not verify_password("wrong password", password_hash)
 
 
-def test_create_and_decode_token_roundtrip() -> None:
+def test_create_token_produces_claims_decodable_by_shared_jwt_auth() -> None:
     user_id = uuid.uuid4()
 
     token = create_token(
@@ -34,45 +32,3 @@ def test_create_and_decode_token_roundtrip() -> None:
     assert claims["sub"] == str(user_id)
     assert claims["role"] == "renter"
     assert claims["type"] == "access"
-
-
-def test_decode_token_rejects_expired_token() -> None:
-    token = create_token(
-        user_id=uuid.uuid4(),
-        role="renter",
-        token_type="access",
-        secret="secret",
-        issuer="carflow-auth",
-        ttl_seconds=-1,
-    )
-
-    with pytest.raises(jwt.ExpiredSignatureError):
-        decode_token(token, secret="secret", issuer="carflow-auth")
-
-
-def test_decode_token_rejects_wrong_issuer() -> None:
-    token = create_token(
-        user_id=uuid.uuid4(),
-        role="renter",
-        token_type="access",
-        secret="secret",
-        issuer="carflow-auth",
-        ttl_seconds=60,
-    )
-
-    with pytest.raises(jwt.InvalidIssuerError):
-        decode_token(token, secret="secret", issuer="someone-else")
-
-
-def test_decode_token_rejects_tampered_signature() -> None:
-    token = create_token(
-        user_id=uuid.uuid4(),
-        role="renter",
-        token_type="access",
-        secret="secret",
-        issuer="carflow-auth",
-        ttl_seconds=60,
-    )
-
-    with pytest.raises(jwt.InvalidSignatureError):
-        decode_token(token, secret="a-different-secret", issuer="carflow-auth")

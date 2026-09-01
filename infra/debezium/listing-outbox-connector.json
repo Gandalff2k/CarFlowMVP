@@ -1,0 +1,21 @@
+{
+  "name": "listing-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "carflow",
+    "database.password": "carflow",
+    "database.dbname": "listing",
+    "topic.prefix": "listing",
+    "slot.name": "listing_outbox",
+    "publication.name": "listing_outbox_publication",
+    "schema.include.list": "public",
+    "table.include.list": "public.outbox",
+    "tombstones.on.delete": "false",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.route.topic.replacement": "listing.vehicle.events"
+  }
+}

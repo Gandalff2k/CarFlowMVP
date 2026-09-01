@@ -1,11 +1,11 @@
 import asyncio
 import hashlib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,10 +62,6 @@ class IdempotencyGuard:
             },
         )
         if result.rowcount == 0:
-            # Lost a race: another request already claimed this key between our
-            # pre-check SELECT and this INSERT. Recover by returning whatever
-            # that request actually persisted, instead of crashing on the
-            # primary-key violation.
             row = (
                 await self.session.execute(
                     text(
@@ -83,6 +79,29 @@ class IdempotencyGuard:
             self.replay_body = row.response_body
             self.replay_status = row.status_code
         await self.session.commit()
+
+
+async def respond_idempotently(
+    guard: "IdempotencyGuard",
+    status_code: int,
+    build_response_json: Callable[[], Awaitable[str]],
+) -> Response:
+    if guard.is_replay:
+        return Response(
+            content=guard.replay_body,
+            media_type="application/json",
+            status_code=guard.replay_status,
+        )
+
+    response_json = await build_response_json()
+    await guard.store(response_json, status_code)
+    if guard.is_replay:
+        return Response(
+            content=guard.replay_body,
+            media_type="application/json",
+            status_code=guard.replay_status,
+        )
+    return Response(content=response_json, media_type="application/json", status_code=status_code)
 
 
 def idempotency_guard_dependency(

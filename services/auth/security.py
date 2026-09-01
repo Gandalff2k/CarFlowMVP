@@ -41,7 +41,3 @@ def create_token(
         "exp": now + dt.timedelta(seconds=ttl_seconds),
     }
     return jwt.encode(payload, secret, algorithm="HS256")
-
-
-def decode_token(token: str, *, secret: str, issuer: str) -> dict:
-    return jwt.decode(token, secret, algorithms=["HS256"], issuer=issuer)

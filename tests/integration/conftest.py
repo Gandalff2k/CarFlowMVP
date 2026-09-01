@@ -1,21 +1,58 @@
+import asyncio
 import os
 import pathlib
 
+import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
 from testcontainers.community.postgres import PostgresContainer
 
-AUTH_DIR = pathlib.Path(__file__).resolve().parents[2] / "services" / "auth"
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+AUTH_DIR = REPO_ROOT / "services" / "auth"
+LISTING_DIR = REPO_ROOT / "services" / "listing"
+
+
+def _run_migrations(service_dir: pathlib.Path, database_url: str) -> None:
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        alembic_cfg = Config(str(service_dir / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(service_dir / "migrations"))
+        command.upgrade(alembic_cfg, "head")
+    finally:
+        del os.environ["DATABASE_URL"]
+
+
+async def _create_database(base_url: str, dbname: str) -> None:
+    dsn = base_url.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(dsn)
+    try:
+        await conn.execute(f'CREATE DATABASE "{dbname}"')
+    finally:
+        await conn.close()
 
 
 @pytest.fixture(scope="session")
-def database_url() -> str:
+def postgres_container():
     with PostgresContainer("postgres:16-alpine") as postgres:
-        url = postgres.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
-        os.environ["DATABASE_URL"] = url
-        alembic_cfg = Config(str(AUTH_DIR / "alembic.ini"))
-        alembic_cfg.set_main_option("script_location", str(AUTH_DIR / "migrations"))
-        command.upgrade(alembic_cfg, "head")
-        yield url
-        del os.environ["DATABASE_URL"]
+        yield postgres
+
+
+@pytest.fixture(scope="session")
+def database_url(postgres_container: PostgresContainer) -> str:
+    url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    _run_migrations(AUTH_DIR, url)
+    return url
+
+
+@pytest.fixture(scope="session")
+def listing_database_url(postgres_container: PostgresContainer) -> str:
+    base_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    asyncio.run(_create_database(base_url, "listing_test"))
+    listing_url = base_url.rsplit("/", 1)[0] + "/listing_test"
+    _run_migrations(LISTING_DIR, listing_url)
+    return listing_url

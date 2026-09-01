@@ -11,7 +11,6 @@ class Base(DeclarativeBase):
 
 
 class Role(Base):
-    
 
     __tablename__ = "roles"
 
