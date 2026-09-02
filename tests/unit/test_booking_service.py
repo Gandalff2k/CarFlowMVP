@@ -219,7 +219,9 @@ async def test_reject_booking_request_settles_on_rejected() -> None:
         bearer_token="t",
     )
 
-    rejected = await reject_booking_request(repo, booking_id=booking.id, host_id=booking.host_id)
+    rejected = await reject_booking_request(
+        repo, FakeSession(), booking_id=booking.id, host_id=booking.host_id
+    )
 
     assert rejected.status == "rejected"
 
@@ -238,7 +240,7 @@ async def test_apply_payment_authorized_confirms_the_booking() -> None:
         bearer_token="t",
     )
 
-    confirmed = await apply_payment_authorized(repo, booking_id=booking.id)
+    confirmed = await apply_payment_authorized(repo, FakeSession(), booking_id=booking.id)
 
     assert confirmed.status == "confirmed"
 
@@ -257,7 +259,7 @@ async def test_apply_payment_authorization_failed_cancels_the_booking() -> None:
         bearer_token="t",
     )
 
-    cancelled = await apply_payment_authorization_failed(repo, booking_id=booking.id)
+    cancelled = await apply_payment_authorization_failed(repo, FakeSession(), booking_id=booking.id)
 
     assert cancelled.status == "cancelled"
 
@@ -275,7 +277,7 @@ async def test_full_happy_path_reaches_completed() -> None:
         end_date=dt.date(2026, 6, 4),
         bearer_token="t",
     )
-    await apply_payment_authorized(repo, booking_id=booking.id)
+    await apply_payment_authorized(repo, FakeSession(), booking_id=booking.id)
     await record_handover(
         repo,
         booking_id=booking.id,
@@ -293,7 +295,7 @@ async def test_full_happy_path_reaches_completed() -> None:
         fuel_percent=50,
         photo_url="http://x/2.jpg",
     )
-    completed = await apply_payment_captured(repo, booking_id=booking.id)
+    completed = await apply_payment_captured(repo, FakeSession(), booking_id=booking.id)
 
     assert returned.overage_cents == 300 * 50  # 900 driven - 600 allowed = 300 miles over
     assert completed.status == "completed"

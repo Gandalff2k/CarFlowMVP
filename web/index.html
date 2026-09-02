@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CarFlow Manual Test Console</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e0e3e8;
+    --text: #1c1f26;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --err: #b91c1c;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+  header {
+    padding: 20px 24px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header p { margin: 0; color: var(--muted); }
+  header code { font-family: var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  main {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px;
+    padding: 16px 24px 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card h2 { margin: 0 0 10px; font-size: 15px; }
+  .card h3 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select, textarea, button {
+    font: inherit;
+    padding: 7px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    width: 100%;
+  }
+  textarea { font-family: var(--mono); font-size: 12px; min-height: 60px; resize: vertical; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    margin-top: 10px;
+    font-weight: 600;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--bg); }
+  button.danger { background: var(--err); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .session-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .session {
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+    font-size: 12px;
+  }
+  .session.active { border-color: var(--accent); background: #eff6ff; }
+  .session .name { font-weight: 600; flex: 1; }
+  .session .role { color: var(--muted); font-family: var(--mono); }
+  .session button { width: auto; margin: 0; padding: 3px 8px; font-size: 11px; }
+  #log {
+    max-height: 480px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #0f1117;
+    color: #d8dee9;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  #log .entry { padding: 6px 0; border-bottom: 1px solid #262a35; }
+  #log .entry:last-child { border-bottom: none; }
+  #log .title { color: #7dd3fc; }
+  #log .title.err { color: #fca5a5; }
+  #log pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; }
+  .pill {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    background: var(--bg); color: var(--muted); font-family: var(--mono);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CarFlow — Manual Test Console</h1>
+  <p>Talks directly to Kong at <code id="api-base-label"></code>. Every mutating call gets its own
+     random Idempotency-Key automatically. This is a hand-rolled test tool, not a product UI.</p>
+</header>
+
+<main>
+
+  <section class="card">
+    <h2>1. Sessions</h2>
+    <form id="register-form">
+      <h3>Register</h3>
+      <label>Name</label><input name="name" required value="Test User" />
+      <label>Email</label><input name="email" type="email" required />
+      <label>Password (min 8 chars)</label><input name="password" type="password" required value="supersecret123" />
+      <label>Role</label>
+      <select name="role"><option value="renter">renter</option><option value="host">host</option></select>
+      <button type="submit">Register</button>
+    </form>
+    <form id="login-form">
+      <h3>Log in</h3>
+      <label>Email</label><input name="email" type="email" required />
+      <label>Password</label><input name="password" type="password" required value="supersecret123" />
+      <label>Save session as</label><input name="label" placeholder="e.g. Host A" required />
+      <button type="submit">Log in</button>
+    </form>
+    <h3>Saved sessions (active one is used by every form below)</h3>
+    <div class="session-list" id="session-list"></div>
+    <p class="hint">
+      Admin accounts can't self-register by design (see PLAN.md Phase 2). Seed one directly in Postgres, then log in above:
+      <br /><code>docker compose exec postgres psql -U carflow -d auth -c "INSERT INTO users (id, email, name, password_hash, role) VALUES (gen_random_uuid(), 'admin@example.com', 'Admin', '&lt;argon2-hash&gt;', 'admin');"</code>
+      <br />Generate the hash with: <code>python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('adminpassword123'))"</code>
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>2. Listing — create &amp; approve</h2>
+    <form id="create-vehicle-form">
+      <h3>Create vehicle (active session must be a host)</h3>
+      <div class="row">
+        <div><label>Make</label><input name="make" required value="Toyota" /></div>
+        <div><label>Model</label><input name="model" required value="Corolla" /></div>
+        <div><label>Year</label><input name="year" type="number" required value="2022" /></div>
+      </div>
+      <div class="row">
+        <div><label>Daily price (cents)</label><input name="daily_price_cents" type="number" required value="5000" /></div>
+        <div><label>Daily mileage limit</label><input name="daily_mileage_limit" type="number" required value="200" /></div>
+        <div><label>Booking mode</label>
+          <select name="booking_mode"><option value="instant">instant</option><option value="request">request</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Latitude</label><input name="latitude" type="number" step="any" required value="40.7128" /></div>
+        <div><label>Longitude</label><input name="longitude" type="number" step="any" required value="-74.0060" /></div>
+      </div>
+      <button type="submit">Create vehicle</button>
+    </form>
+    <h3>Look up / approve / reject</h3>
+    <label>Vehicle ID</label><input id="vehicle-id-field" placeholder="paste an id, or use the one just created" />
+    <div class="row">
+      <button type="button" class="secondary" id="get-vehicle-btn">Get</button>
+      <button type="button" id="approve-vehicle-btn">Approve (as admin)</button>
+      <button type="button" class="danger" id="reject-vehicle-btn">Reject (as admin)</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3. Search — public catalog</h2>
+    <div class="row">
+      <div><label>Make</label><input id="search-make" /></div>
+      <div><label>Booking mode</label>
+        <select id="search-booking-mode"><option value="">any</option><option value="instant">instant</option><option value="request">request</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Min price (cents)</label><input id="search-min-price" type="number" /></div>
+      <div><label>Max price (cents)</label><input id="search-max-price" type="number" /></div>
+    </div>
+    <div class="row">
+      <div><label>Lat</label><input id="search-lat" type="number" step="any" /></div>
+      <div><label>Lon</label><input id="search-lon" type="number" step="any" /></div>
+      <div><label>Radius (km)</label><input id="search-radius" type="number" /></div>
+    </div>
+    <label>Sort</label>
+    <select id="search-sort">
+      <option value="price_asc">price_asc</option>
+      <option value="price_desc">price_desc</option>
+      <option value="distance">distance (needs lat/lon)</option>
+    </select>
+    <button type="button" id="search-btn">Search</button>
+    <p class="hint">No login needed — approved listings are public. A freshly approved vehicle can take a few seconds to appear (real Debezium CDC → Kafka → search).</p>
+  </section>
+
+  <section class="card">
+    <h2>4. Admin</h2>
+    <label>Vehicle ID</label><input id="admin-vehicle-id" placeholder="vehicle id" />
+    <div class="row">
+      <button type="button" id="kill-switch-on-btn" class="danger">Activate kill-switch</button>
+      <button type="button" id="kill-switch-off-btn" class="secondary">Deactivate</button>
+    </div>
+    <button type="button" class="secondary" id="list-bookings-btn">List all bookings</button>
+    <button type="button" class="secondary" id="list-actions-btn">List audit log</button>
+    <p class="hint">All require the active session to be an admin.</p>
+  </section>
+
+  <section class="card">
+    <h2>5. Booking</h2>
+    <form id="create-booking-form">
+      <h3>Request a booking (active session must be a renter)</h3>
+      <label>Vehicle ID</label><input name="vehicle_id" id="booking-vehicle-id" required placeholder="an approved vehicle's id" />
+      <div class="row">
+        <div><label>Start date</label><input name="start_date" type="date" required value="2026-06-01" /></div>
+        <div><label>End date</label><input name="end_date" type="date" required value="2026-06-04" /></div>
+      </div>
+      <button type="submit">Request booking</button>
+    </form>
+    <h3>Manage a booking</h3>
+    <label>Booking ID</label><input id="booking-id-field" placeholder="paste an id, or use the one just created" />
+    <div class="row">
+      <button type="button" class="secondary" id="get-booking-btn">Get</button>
+      <button type="button" id="accept-booking-btn">Accept (host, request-mode)</button>
+      <button type="button" class="danger" id="reject-booking-btn">Reject (host)</button>
+    </div>
+    <h3>Handover / return (as host)</h3>
+    <div class="row">
+      <div><label>Odometer</label><input id="ho-odometer" type="number" value="1000" /></div>
+      <div><label>Fuel %</label><input id="ho-fuel" type="number" value="100" /></div>
+      <div><label>Photo URL</label><input id="ho-photo" value="http://example.com/1.jpg" /></div>
+    </div>
+    <div class="row">
+      <button type="button" id="handover-btn">Handover</button>
+      <button type="button" id="return-btn">Return</button>
+    </div>
+    <p class="hint">Payment authorization needs a real <code>STRIPE_API_KEY</code> to succeed. Without one, bookings correctly land on <span class="pill">cancelled</span> via the compensation path — that's expected, not a bug.</p>
+  </section>
+
+  <section class="card">
+    <h2>6. Telemetry</h2>
+    <label>Vehicle ID</label><input id="telemetry-vehicle-id" placeholder="vehicle id" />
+    <div class="row">
+      <div><label>Lat</label><input id="telemetry-lat" type="number" step="any" value="40.7128" /></div>
+      <div><label>Lng</label><input id="telemetry-lng" type="number" step="any" value="-74.0060" /></div>
+      <div><label>Speed (kph)</label><input id="telemetry-speed" type="number" value="80" /></div>
+    </div>
+    <div class="row">
+      <button type="button" id="telemetry-connect-btn" class="secondary">Connect</button>
+      <button type="button" id="telemetry-send-btn">Send one packet</button>
+      <button type="button" id="telemetry-disconnect-btn" class="secondary">Disconnect</button>
+    </div>
+    <div id="telemetry-status" class="hint">Not connected.</div>
+    <button type="button" class="secondary" id="telemetry-location-btn">Get last known location</button>
+    <p class="hint">If the vehicle's kill-switch is active, the stored speed will be forced to 0 regardless of what's sent here — check via Mongo or the location endpoint.</p>
+  </section>
+
+  <section class="card wide">
+    <h2>Activity log (most recent first)</h2>
+    <div id="log"></div>
+  </section>
+
+</main>
+
+<script>
+const API = "http://localhost:8080";
+document.getElementById("api-base-label").textContent = API;
+
+// ---------- session management ----------
+
+let sessions = JSON.parse(localStorage.getItem("carflow_sessions") || "{}");
+let activeLabel = localStorage.getItem("carflow_active_session");
+
+function saveSessions() {
+  localStorage.setItem("carflow_sessions", JSON.stringify(sessions));
+  localStorage.setItem("carflow_active_session", activeLabel || "");
+  renderSessions();
+}
+
+function activeSession() {
+  return activeLabel ? sessions[activeLabel] : null;
+}
+
+// JWTs use base64url with no padding; atob() requires standard base64
+// (+ / and multiple-of-4 length), so both must be fixed up before decoding.
+function decodeJwtPayload(token) {
+  const [, payload] = token.split(".");
+  let base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) base64 += "=";
+  return JSON.parse(atob(base64));
+}
+
+function renderSessions() {
+  const list = document.getElementById("session-list");
+  list.innerHTML = "";
+  const labels = Object.keys(sessions);
+  if (labels.length === 0) {
+    list.innerHTML = '<p class="hint">No saved sessions yet — register and log in above.</p>';
+    return;
+  }
+  for (const label of labels) {
+    const s = sessions[label];
+    const row = document.createElement("div");
+    row.className = "session" + (label === activeLabel ? " active" : "");
+    row.innerHTML = `
+      <span class="name">${label}</span>
+      <span class="role">${s.role}</span>
+      <button type="button" data-action="use">${label === activeLabel ? "active" : "use"}</button>
+      <button type="button" data-action="remove" class="danger">x</button>
+    `;
+    row.querySelector('[data-action="use"]').onclick = () => { activeLabel = label; saveSessions(); };
+    row.querySelector('[data-action="remove"]').onclick = () => {
+      delete sessions[label];
+      if (activeLabel === label) activeLabel = null;
+      saveSessions();
+    };
+    list.appendChild(row);
+  }
+}
+
+// ---------- activity log ----------
+
+function log(title, detail, isError) {
+  const box = document.getElementById("log");
+  const entry = document.createElement("div");
+  entry.className = "entry";
+  const body = typeof detail === "string" ? detail : JSON.stringify(detail, null, 2);
+  const safeBody = body === undefined || body === null ? "" : body;
+  entry.innerHTML = `<span class="title${isError ? " err" : ""}">${new Date().toLocaleTimeString()} — ${title}</span><pre>${safeBody}</pre>`;
+  box.prepend(entry);
+}
+
+// ---------- HTTP helper ----------
+
+async function api(method, path, { body, auth = true, idempotent = false } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (auth) {
+    const session = activeSession();
+    if (!session) {
+      log(`${method} ${path}`, "No active session selected.", true);
+      throw new Error("no active session");
+    }
+    headers["Authorization"] = `Bearer ${session.token}`;
+  }
+  if (idempotent) headers["Idempotency-Key"] = crypto.randomUUID();
+
+  const response = await fetch(API + path, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  let parsed;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+
+  const label = `${method} ${path} -> ${response.status}`;
+  log(label, parsed, !response.ok);
+  if (!response.ok) throw new Error(label);
+  return parsed;
+}
+
+// ---------- auth ----------
+
+document.getElementById("register-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  await api("POST", "/auth/register", {
+    auth: false,
+    idempotent: true,
+    body: { name: f.get("name"), email: f.get("email"), password: f.get("password"), role: f.get("role") },
+  }).catch(() => {});
+});
+
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const label = f.get("label");
+  try {
+    const result = await api("POST", "/auth/login", {
+      auth: false,
+      body: { email: f.get("email"), password: f.get("password") },
+    });
+    const claims = decodeJwtPayload(result.access_token);
+    sessions[label] = { token: result.access_token, role: claims.role, userId: claims.sub };
+    activeLabel = label;
+    saveSessions();
+  } catch {}
+});
+
+// ---------- listing ----------
+
+document.getElementById("create-vehicle-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  try {
+    const vehicle = await api("POST", "/listing/vehicles", {
+      idempotent: true,
+      body: {
+        make: f.get("make"), model: f.get("model"), year: Number(f.get("year")),
+        daily_price_cents: Number(f.get("daily_price_cents")),
+        daily_mileage_limit: Number(f.get("daily_mileage_limit")),
+        booking_mode: f.get("booking_mode"),
+        latitude: Number(f.get("latitude")), longitude: Number(f.get("longitude")),
+      },
+    });
+    document.getElementById("vehicle-id-field").value = vehicle.id;
+    document.getElementById("booking-vehicle-id").value = vehicle.id;
+    document.getElementById("admin-vehicle-id").value = vehicle.id;
+    document.getElementById("telemetry-vehicle-id").value = vehicle.id;
+  } catch {}
+});
+
+document.getElementById("get-vehicle-btn").onclick = () =>
+  api("GET", `/listing/vehicles/${document.getElementById("vehicle-id-field").value}`).catch(() => {});
+
+document.getElementById("approve-vehicle-btn").onclick = () =>
+  api("POST", `/admin/vehicles/${document.getElementById("vehicle-id-field").value}/approve`, { idempotent: true }).catch(() => {});
+
+document.getElementById("reject-vehicle-btn").onclick = () =>
+  api("POST", `/admin/vehicles/${document.getElementById("vehicle-id-field").value}/reject`, { idempotent: true }).catch(() => {});
+
+// ---------- search ----------
+
+document.getElementById("search-btn").onclick = async () => {
+  const params = new URLSearchParams();
+  const make = document.getElementById("search-make").value;
+  const mode = document.getElementById("search-booking-mode").value;
+  const minPrice = document.getElementById("search-min-price").value;
+  const maxPrice = document.getElementById("search-max-price").value;
+  const lat = document.getElementById("search-lat").value;
+  const lon = document.getElementById("search-lon").value;
+  const radius = document.getElementById("search-radius").value;
+  const sort = document.getElementById("search-sort").value;
+  if (make) params.set("make", make);
+  if (mode) params.set("booking_mode", mode);
+  if (minPrice) params.set("min_price_cents", minPrice);
+  if (maxPrice) params.set("max_price_cents", maxPrice);
+  if (lat) params.set("lat", lat);
+  if (lon) params.set("lon", lon);
+  if (radius) params.set("radius_km", radius);
+  params.set("sort", sort);
+  await api("GET", `/search/vehicles?${params}`, { auth: false }).catch(() => {});
+};
+
+// ---------- admin ----------
+
+document.getElementById("kill-switch-on-btn").onclick = () =>
+  api("POST", `/admin/vehicles/${document.getElementById("admin-vehicle-id").value}/kill-switch`, { idempotent: true }).catch(() => {});
+
+document.getElementById("kill-switch-off-btn").onclick = () =>
+  api("DELETE", `/admin/vehicles/${document.getElementById("admin-vehicle-id").value}/kill-switch`, { idempotent: true }).catch(() => {});
+
+document.getElementById("list-bookings-btn").onclick = () =>
+  api("GET", "/admin/bookings").catch(() => {});
+
+document.getElementById("list-actions-btn").onclick = () =>
+  api("GET", "/admin/actions").catch(() => {});
+
+// ---------- booking ----------
+
+document.getElementById("create-booking-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  try {
+    const booking = await api("POST", "/booking/bookings", {
+      idempotent: true,
+      body: { vehicle_id: f.get("vehicle_id"), start_date: f.get("start_date"), end_date: f.get("end_date") },
+    });
+    document.getElementById("booking-id-field").value = booking.id;
+  } catch {}
+});
+
+document.getElementById("get-booking-btn").onclick = () =>
+  api("GET", `/booking/bookings/${document.getElementById("booking-id-field").value}`).catch(() => {});
+
+document.getElementById("accept-booking-btn").onclick = () =>
+  api("POST", `/booking/bookings/${document.getElementById("booking-id-field").value}/accept`, { idempotent: true }).catch(() => {});
+
+document.getElementById("reject-booking-btn").onclick = () =>
+  api("POST", `/booking/bookings/${document.getElementById("booking-id-field").value}/reject`, { idempotent: true }).catch(() => {});
+
+document.getElementById("handover-btn").onclick = () =>
+  api("POST", `/booking/bookings/${document.getElementById("booking-id-field").value}/handover`, {
+    idempotent: true,
+    body: {
+      odometer: Number(document.getElementById("ho-odometer").value),
+      fuel_percent: Number(document.getElementById("ho-fuel").value),
+      photo_url: document.getElementById("ho-photo").value,
+    },
+  }).catch(() => {});
+
+document.getElementById("return-btn").onclick = () =>
+  api("POST", `/booking/bookings/${document.getElementById("booking-id-field").value}/return`, {
+    idempotent: true,
+    body: {
+      odometer: Number(document.getElementById("ho-odometer").value),
+      fuel_percent: Number(document.getElementById("ho-fuel").value),
+      photo_url: document.getElementById("ho-photo").value,
+    },
+  }).catch(() => {});
+
+// ---------- telemetry (WebSocket) ----------
+
+let telemetrySocket = null;
+
+document.getElementById("telemetry-connect-btn").onclick = () => {
+  const session = activeSession();
+  const vehicleId = document.getElementById("telemetry-vehicle-id").value;
+  if (!session || !vehicleId) {
+    log("telemetry connect", "Pick an active session and a vehicle id first.", true);
+    return;
+  }
+  const wsBase = API.replace(/^http/, "ws");
+  telemetrySocket = new WebSocket(`${wsBase}/telemetry/ingest/${vehicleId}?token=${session.token}`);
+  telemetrySocket.onopen = () => { document.getElementById("telemetry-status").textContent = "Connected."; };
+  telemetrySocket.onclose = (e) => { document.getElementById("telemetry-status").textContent = `Disconnected (code ${e.code}).`; };
+  telemetrySocket.onmessage = (e) => log("telemetry <-", e.data);
+};
+
+document.getElementById("telemetry-send-btn").onclick = () => {
+  if (!telemetrySocket || telemetrySocket.readyState !== WebSocket.OPEN) {
+    log("telemetry send", "Not connected — click Connect first.", true);
+    return;
+  }
+  const packet = {
+    lat: Number(document.getElementById("telemetry-lat").value),
+    lng: Number(document.getElementById("telemetry-lng").value),
+    speed_kph: Number(document.getElementById("telemetry-speed").value),
+    recorded_at: new Date().toISOString(),
+  };
+  telemetrySocket.send(JSON.stringify(packet));
+  log("telemetry ->", packet);
+};
+
+document.getElementById("telemetry-disconnect-btn").onclick = () => {
+  if (telemetrySocket) telemetrySocket.close();
+};
+
+document.getElementById("telemetry-location-btn").onclick = () =>
+  api("GET", `/telemetry/vehicles/${document.getElementById("telemetry-vehicle-id").value}/location`).catch(() => {});
+
+// ---------- init ----------
+
+renderSessions();
+</script>
+
+</body>
+</html>

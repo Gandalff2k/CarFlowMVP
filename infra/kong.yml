@@ -45,6 +45,30 @@ services:
       - name: search-public
         paths: ["/search"]
         strip_path: false
+  - name: telemetry-service
+    url: http://telemetry:8000
+    routes:
+      - name: telemetry-protected
+        paths: ["/telemetry/vehicles"]
+        strip_path: false
+        plugins:
+          - name: jwt
+      - name: telemetry-ingest
+        # WebSocket handshake carries its own ?token=... — the jwt plugin's
+        # default locations (Authorization header, a "jwt" query param) don't
+        # match, so this route authenticates itself (see services/telemetry
+        # /app.py), the same way payment-webhooks bypasses jwt for its own
+        # HMAC-verified signature.
+        paths: ["/telemetry/ingest"]
+        strip_path: false
+  - name: admin-service
+    url: http://admin:8000
+    routes:
+      - name: admin-protected
+        paths: ["/admin"]
+        strip_path: false
+        plugins:
+          - name: jwt
 
 # key/secret here must match auth's JWT_ISSUER / JWT_SECRET env vars.
 consumers:

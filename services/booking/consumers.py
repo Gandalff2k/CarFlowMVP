@@ -14,7 +14,7 @@ from services.booking.service import (
 
 async def _handle(session: AsyncSession, data: dict[str, Any], apply) -> None:
     repo = BookingRepository(session)
-    await apply(repo, booking_id=uuid.UUID(data["booking_id"]))
+    await apply(repo, session, booking_id=uuid.UUID(data["booking_id"]))
 
 
 async def handle_payment_authorized(session: AsyncSession, data: dict[str, Any]) -> None:

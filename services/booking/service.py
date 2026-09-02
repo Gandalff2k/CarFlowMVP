@@ -35,6 +35,28 @@ def _apply_transition(booking: Booking, transition: domain.Transition) -> None:
         booking.overage_cents = payload["overage_cents"]
 
 
+async def _emit_domain_event(session: AsyncSession, booking: Booking, event_type: str) -> None:
+    """Events for anyone interested in a booking's lifecycle (notification,
+    admin, future consumers) — distinct from the authorize/capture *commands*
+    this module also writes to the same outbox table for payment specifically.
+    Ships on the same `booking.payment.commands` topic (see PLAN.md's Phase 6
+    notes for why that name is now slightly stale but not worth renaming);
+    consumers pick out the event_types they care about and ignore the rest,
+    same as every other consumer in this codebase already does."""
+    await write_outbox_event(
+        session,
+        aggregate_type="booking",
+        aggregate_id=str(booking.id),
+        event_type=event_type,
+        data={
+            "booking_id": str(booking.id),
+            "renter_id": str(booking.renter_id),
+            "host_id": str(booking.host_id),
+            "status": booking.status,
+        },
+    )
+
+
 async def _emit_authorize_payment_requested(session: AsyncSession, booking: Booking) -> None:
     days = max((booking.end_date - booking.start_date).days, 1)
     await write_outbox_event(
@@ -105,7 +127,7 @@ async def accept_booking_request(
 
 
 async def reject_booking_request(
-    repo: BookingRepository, *, booking_id: uuid.UUID, host_id: uuid.UUID
+    repo: BookingRepository, session: AsyncSession, *, booking_id: uuid.UUID, host_id: uuid.UUID
 ) -> Booking:
     booking = await repo.get_by_id(booking_id)
     if booking is None:
@@ -116,8 +138,13 @@ async def reject_booking_request(
     await repo.append_events(
         booking=booking, events=transition.events, next_status=transition.next_status
     )
+    await _emit_domain_event(session, booking, "booking_rejected")
     await repo.save(booking)
     return booking
+
+
+async def list_all_bookings(repo: BookingRepository, *, limit: int, offset: int) -> list[Booking]:
+    return await repo.list_all(limit=limit, offset=offset)
 
 
 async def get_booking_for_viewer(
@@ -196,7 +223,9 @@ async def record_return(
     return booking
 
 
-async def apply_payment_authorized(repo: BookingRepository, *, booking_id: uuid.UUID) -> Booking:
+async def apply_payment_authorized(
+    repo: BookingRepository, session: AsyncSession, *, booking_id: uuid.UUID
+) -> Booking:
     booking = await repo.get_by_id(booking_id)
     if booking is None:
         raise BookingNotFoundError(booking_id)
@@ -204,12 +233,13 @@ async def apply_payment_authorized(repo: BookingRepository, *, booking_id: uuid.
     await repo.append_events(
         booking=booking, events=transition.events, next_status=transition.next_status
     )
+    await _emit_domain_event(session, booking, "booking_confirmed")
     await repo.save(booking)
     return booking
 
 
 async def apply_payment_authorization_failed(
-    repo: BookingRepository, *, booking_id: uuid.UUID
+    repo: BookingRepository, session: AsyncSession, *, booking_id: uuid.UUID
 ) -> Booking:
     booking = await repo.get_by_id(booking_id)
     if booking is None:
@@ -218,11 +248,14 @@ async def apply_payment_authorization_failed(
     await repo.append_events(
         booking=booking, events=transition.events, next_status=transition.next_status
     )
+    await _emit_domain_event(session, booking, "booking_cancelled")
     await repo.save(booking)
     return booking
 
 
-async def apply_payment_captured(repo: BookingRepository, *, booking_id: uuid.UUID) -> Booking:
+async def apply_payment_captured(
+    repo: BookingRepository, session: AsyncSession, *, booking_id: uuid.UUID
+) -> Booking:
     booking = await repo.get_by_id(booking_id)
     if booking is None:
         raise BookingNotFoundError(booking_id)
@@ -230,12 +263,13 @@ async def apply_payment_captured(repo: BookingRepository, *, booking_id: uuid.UU
     await repo.append_events(
         booking=booking, events=transition.events, next_status=transition.next_status
     )
+    await _emit_domain_event(session, booking, "booking_completed")
     await repo.save(booking)
     return booking
 
 
 async def apply_payment_capture_failed(
-    repo: BookingRepository, *, booking_id: uuid.UUID
+    repo: BookingRepository, session: AsyncSession, *, booking_id: uuid.UUID
 ) -> Booking:
     booking = await repo.get_by_id(booking_id)
     if booking is None:
@@ -244,5 +278,6 @@ async def apply_payment_capture_failed(
     await repo.append_events(
         booking=booking, events=transition.events, next_status=transition.next_status
     )
+    await _emit_domain_event(session, booking, "booking_payment_capture_failed")
     await repo.save(booking)
     return booking

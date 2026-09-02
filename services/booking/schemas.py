@@ -46,3 +46,8 @@ class BookingResponse(BaseModel):
     start_photo_url: str | None
     end_photo_url: str | None
     overage_cents: int
+
+
+class ListBookingsResponse(BaseModel):
+    items: list[BookingResponse]
+    next_offset: int | None

@@ -131,7 +131,7 @@ def confirm_payment(booking_database_url: str):
     async def _confirm(booking_id: str) -> None:
         async with session_factory() as session:
             await apply_payment_authorized(
-                BookingRepository(session), booking_id=uuid.UUID(booking_id)
+                BookingRepository(session), session, booking_id=uuid.UUID(booking_id)
             )
             await session.commit()
 

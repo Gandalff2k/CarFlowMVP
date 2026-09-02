@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from testcontainers.elasticsearch import ElasticSearchContainer
 from testcontainers.kafka import KafkaContainer
+from testcontainers.mongodb import MongoDbContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
@@ -16,6 +17,8 @@ AUTH_DIR = REPO_ROOT / "services" / "auth"
 LISTING_DIR = REPO_ROOT / "services" / "listing"
 BOOKING_DIR = REPO_ROOT / "services" / "booking"
 PAYMENT_DIR = REPO_ROOT / "services" / "payment"
+ADMIN_DIR = REPO_ROOT / "services" / "admin"
+NOTIFICATION_DIR = REPO_ROOT / "services" / "notification"
 
 
 def _run_migrations(service_dir: pathlib.Path, database_url: str) -> None:
@@ -62,6 +65,12 @@ def redis_url():
 
 
 @pytest.fixture(scope="session")
+def mongo_url():
+    with MongoDbContainer("mongo:7") as mongo:
+        yield mongo.get_connection_url()
+
+
+@pytest.fixture(scope="session")
 def database_url(postgres_container: PostgresContainer) -> str:
     url = postgres_container.get_connection_url().replace(
         "postgresql+psycopg2", "postgresql+asyncpg"
@@ -101,3 +110,25 @@ def payment_database_url(postgres_container: PostgresContainer) -> str:
     payment_url = base_url.rsplit("/", 1)[0] + "/payment_test"
     _run_migrations(PAYMENT_DIR, payment_url)
     return payment_url
+
+
+@pytest.fixture(scope="session")
+def admin_database_url(postgres_container: PostgresContainer) -> str:
+    base_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    asyncio.run(_create_database(base_url, "admin_test"))
+    admin_url = base_url.rsplit("/", 1)[0] + "/admin_test"
+    _run_migrations(ADMIN_DIR, admin_url)
+    return admin_url
+
+
+@pytest.fixture(scope="session")
+def notification_database_url(postgres_container: PostgresContainer) -> str:
+    base_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    asyncio.run(_create_database(base_url, "notification_test"))
+    notification_url = base_url.rsplit("/", 1)[0] + "/notification_test"
+    _run_migrations(NOTIFICATION_DIR, notification_url)
+    return notification_url

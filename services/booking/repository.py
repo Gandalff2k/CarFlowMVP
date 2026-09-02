@@ -106,3 +106,9 @@ class BookingRepository:
 
     def state_of(self, booking: Booking) -> BookingState:
         return _to_state(booking)
+
+    async def list_all(self, *, limit: int, offset: int) -> list[Booking]:
+        result = await self._session.execute(
+            select(Booking).order_by(Booking.created_at, Booking.id).limit(limit).offset(offset)
+        )
+        return list(result.scalars().all())

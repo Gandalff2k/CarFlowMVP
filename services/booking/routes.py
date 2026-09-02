@@ -13,6 +13,7 @@ from services.booking.schemas import (
     BookingResponse,
     CreateBookingRequest,
     HandoverRequest,
+    ListBookingsResponse,
     ReturnRequest,
 )
 from services.booking.service import (
@@ -21,6 +22,7 @@ from services.booking.service import (
     VehicleNotBookableError,
     accept_booking_request,
     get_booking_for_viewer,
+    list_all_bookings,
     record_handover,
     record_return,
     reject_booking_request,
@@ -97,6 +99,23 @@ def create_router(
 
         return await respond_idempotently(guard, 201, build)
 
+    @router.get("/bookings", response_model=ListBookingsResponse)
+    async def list_bookings(
+        limit: int = 100,
+        offset: int = 0,
+        session: AsyncSession = Depends(get_session),
+        claims: dict = Depends(get_access_claims),
+    ) -> ListBookingsResponse:
+        # Admin/operational only — this backs the admin service; a renter or
+        # host sees their own bookings via GET /bookings/{id}.
+        require_role(claims, "admin")
+        repo = BookingRepository(session)
+        bookings = await list_all_bookings(repo, limit=limit + 1, offset=offset)
+        next_offset = offset + limit if len(bookings) > limit else None
+        return ListBookingsResponse(
+            items=[_booking_response(b) for b in bookings[:limit]], next_offset=next_offset
+        )
+
     @router.get("/bookings/{booking_id}", response_model=BookingResponse)
     async def get_booking(
         booking_id: uuid.UUID,
@@ -155,7 +174,7 @@ def create_router(
         async def build() -> str:
             try:
                 booking = await reject_booking_request(
-                    repo, booking_id=booking_id, host_id=uuid.UUID(claims["sub"])
+                    repo, session, booking_id=booking_id, host_id=uuid.UUID(claims["sub"])
                 )
             except BookingNotFoundError as exc:
                 raise HTTPException(status_code=404, detail="booking not found") from exc

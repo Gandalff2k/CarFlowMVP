@@ -1,0 +1,23 @@
+{
+  "uid": "carflow-consumers",
+  "title": "CarFlow - Kafka consumer lag",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Consumer lag by service/topic",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "kafka_consumer_lag",
+          "legendFormat": "{{service}} / {{topic}}"
+        }
+      ]
+    }
+  ]
+}

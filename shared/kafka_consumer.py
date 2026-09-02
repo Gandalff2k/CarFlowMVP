@@ -5,6 +5,7 @@ from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from opentelemetry import propagate, trace
+from prometheus_client import Gauge
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.inbox import claim_event
@@ -13,6 +14,26 @@ logger = logging.getLogger(__name__)
 
 EventHandler = Callable[[AsyncSession, dict[str, Any]], Awaitable[None]]
 EventProcessor = Callable[[str, str, dict[str, Any]], Awaitable[None]]
+
+# Labeled by service + topic only — never by partition or consumer-group
+# member, which would be unbounded/high-cardinality for no operational
+# benefit (there's one group per service per topic in this codebase anyway).
+KAFKA_CONSUMER_LAG = Gauge(
+    "kafka_consumer_lag",
+    "Messages behind the topic's latest offset, summed across assigned partitions",
+    ("service", "topic"),
+)
+
+
+async def report_consumer_lag(consumer: AIOKafkaConsumer, *, service: str, topic: str) -> None:
+    total_lag = 0
+    for partition in consumer.assignment():
+        highwater = consumer.highwater(partition)
+        if highwater is None:
+            continue
+        position = await consumer.position(partition)
+        total_lag += max(highwater - position, 0)
+    KAFKA_CONSUMER_LAG.labels(service, topic).set(total_lag)
 
 
 def decode_envelope(raw: bytes) -> dict[str, Any]:
@@ -72,6 +93,7 @@ async def run_consumer(
                 logger.exception("failed to process event_type=%s", envelope.get("event_type"))
                 raise
             await consumer.commit()
+            await report_consumer_lag(consumer, service=tracer_name, topic=topic)
     finally:
         await consumer.stop()
 

@@ -12,7 +12,12 @@ from services.payment.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: fileConfig's default (True) disables
+    # every logger that exists at call time. Migrations run in-process during
+    # test setup, so the default would silently kill application logging
+    # (Logger.disabled short-circuits regardless of level) for the rest of
+    # the test session — found via a real test that asserted on logged output.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
