@@ -13,6 +13,8 @@ MUTABLE_VEHICLE_FIELDS = (
     "daily_price_cents",
     "daily_mileage_limit",
     "booking_mode",
+    "latitude",
+    "longitude",
 )
 
 
@@ -28,6 +30,25 @@ class InvalidApprovalTransitionError(Exception):
     pass
 
 
+def _vehicle_snapshot(vehicle: Vehicle) -> dict:
+    """The event-carried state a downstream projection (search) needs to
+    build its own read model without calling back into listing. Sent on
+    every event that can change whether/how a vehicle should be indexed."""
+    return {
+        "vehicle_id": str(vehicle.id),
+        "host_id": str(vehicle.host_id),
+        "make": vehicle.make,
+        "model": vehicle.model,
+        "year": vehicle.year,
+        "daily_price_cents": vehicle.daily_price_cents,
+        "daily_mileage_limit": vehicle.daily_mileage_limit,
+        "booking_mode": vehicle.booking_mode,
+        "approval_status": vehicle.approval_status,
+        "latitude": vehicle.latitude,
+        "longitude": vehicle.longitude,
+    }
+
+
 async def create_vehicle(
     repo: VehicleRepository,
     *,
@@ -38,6 +59,8 @@ async def create_vehicle(
     daily_price_cents: int,
     daily_mileage_limit: int,
     booking_mode: str,
+    latitude: float,
+    longitude: float,
 ) -> Vehicle:
     return await repo.create(
         host_id=host_id,
@@ -47,6 +70,8 @@ async def create_vehicle(
         daily_price_cents=daily_price_cents,
         daily_mileage_limit=daily_mileage_limit,
         booking_mode=booking_mode,
+        latitude=latitude,
+        longitude=longitude,
     )
 
 
@@ -92,7 +117,7 @@ async def update_vehicle(
         aggregate_type="vehicle",
         aggregate_id=str(vehicle.id),
         event_type="vehicle_updated",
-        data={"vehicle_id": str(vehicle.id)},
+        data=_vehicle_snapshot(vehicle),
     )
     return vehicle
 
@@ -112,7 +137,7 @@ async def approve_vehicle(
         aggregate_type="vehicle",
         aggregate_id=str(vehicle.id),
         event_type="vehicle_approved",
-        data={"vehicle_id": str(vehicle.id)},
+        data=_vehicle_snapshot(vehicle),
     )
     return vehicle
 
@@ -126,6 +151,14 @@ async def reject_vehicle(repo: VehicleRepository, *, vehicle_id: uuid.UUID) -> V
     vehicle.approval_status = "rejected"
     await repo.save(vehicle)
     return vehicle
+
+
+async def list_approved_vehicles(
+    repo: VehicleRepository, *, limit: int, offset: int
+) -> list[Vehicle]:
+    return await repo.list_by_approval_status(
+        approval_status="approved", limit=limit, offset=offset
+    )
 
 
 async def add_availability_block(

@@ -18,7 +18,7 @@ from services.payment.config import PaymentSettings
 from services.payment.consumers import build_booking_command_handlers
 from services.payment.stripe_client import StripeError
 from shared.db import create_engine, create_session_factory
-from shared.kafka_consumer import run_consumer
+from shared.kafka_consumer import postgres_inbox_processor, run_consumer
 
 SECRET = "test-secret"
 ISSUER = "carflow-auth"
@@ -125,8 +125,9 @@ async def _run_payment_consumer_once(
             bootstrap_servers=bootstrap_servers,
             topic=topic,
             group_id="payment-test",
-            session_factory=session_factory,
-            handlers=build_booking_command_handlers(stripe_client),
+            process=postgres_inbox_processor(
+                session_factory, build_booking_command_handlers(stripe_client)
+            ),
             tracer_name="payment-test",
         )
     )
@@ -142,8 +143,7 @@ async def _run_booking_consumer_once(
             bootstrap_servers=bootstrap_servers,
             topic=topic,
             group_id="booking-test",
-            session_factory=session_factory,
-            handlers=PAYMENT_EVENT_HANDLERS,
+            process=postgres_inbox_processor(session_factory, PAYMENT_EVENT_HANDLERS),
             tracer_name="booking-test",
         )
     )
@@ -193,6 +193,8 @@ async def _create_approved_vehicle(listing_client: httpx.AsyncClient) -> dict:
                 "daily_price_cents": 5000,
                 "daily_mileage_limit": 200,
                 "booking_mode": "instant",
+                "latitude": 40.7128,
+                "longitude": -74.0060,
             },
             headers=_headers(host_token, str(uuid.uuid4())),
         )

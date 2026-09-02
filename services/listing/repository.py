@@ -29,6 +29,8 @@ class VehicleRepository:
         daily_price_cents: int,
         daily_mileage_limit: int,
         booking_mode: str,
+        latitude: float,
+        longitude: float,
     ) -> Vehicle:
         vehicle = Vehicle(
             host_id=host_id,
@@ -38,6 +40,8 @@ class VehicleRepository:
             daily_price_cents=daily_price_cents,
             daily_mileage_limit=daily_mileage_limit,
             booking_mode=booking_mode,
+            latitude=latitude,
+            longitude=longitude,
         )
         self._session.add(vehicle)
         await self._session.flush()
@@ -45,6 +49,18 @@ class VehicleRepository:
 
     async def save(self, vehicle: Vehicle) -> None:
         await self._session.flush()
+
+    async def list_by_approval_status(
+        self, *, approval_status: str, limit: int, offset: int
+    ) -> list[Vehicle]:
+        result = await self._session.execute(
+            select(Vehicle)
+            .where(Vehicle.approval_status == approval_status)
+            .order_by(Vehicle.created_at, Vehicle.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())
 
 
 class AvailabilityBlockRepository:

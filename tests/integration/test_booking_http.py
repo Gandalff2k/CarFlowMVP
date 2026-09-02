@@ -66,6 +66,8 @@ async def approved_vehicle(listing_client: httpx.AsyncClient) -> dict:
                 "daily_price_cents": 5000,
                 "daily_mileage_limit": 200,
                 "booking_mode": "instant",
+                "latitude": 40.7128,
+                "longitude": -74.0060,
             },
             headers=_headers(host_token, str(uuid.uuid4())),
         )
@@ -90,6 +92,8 @@ async def request_mode_vehicle(listing_client: httpx.AsyncClient) -> dict:
                 "daily_price_cents": 4000,
                 "daily_mileage_limit": 150,
                 "booking_mode": "request",
+                "latitude": 40.7128,
+                "longitude": -74.0060,
             },
             headers=_headers(host_token, str(uuid.uuid4())),
         )

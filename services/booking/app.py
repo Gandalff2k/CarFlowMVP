@@ -15,7 +15,7 @@ from services.booking.routes import create_router
 from shared.db import create_engine, create_session_factory, session_dependency
 from shared.idempotency import idempotency_guard_dependency, run_idempotency_cleanup_loop
 from shared.jwt_auth import bearer_token, decode_token
-from shared.kafka_consumer import run_consumer
+from shared.kafka_consumer import postgres_inbox_processor, run_consumer
 from shared.telemetry import add_health_endpoints, add_http_metrics
 from shared.tracing import configure_telemetry
 
@@ -61,8 +61,7 @@ def create_app(
                         bootstrap_servers=service_settings.kafka_bootstrap_servers,
                         topic=service_settings.payment_events_topic,
                         group_id="booking",
-                        session_factory=session_factory,
-                        handlers=PAYMENT_EVENT_HANDLERS,
+                        process=postgres_inbox_processor(session_factory, PAYMENT_EVENT_HANDLERS),
                         tracer_name=service_settings.service_name,
                     )
                 )

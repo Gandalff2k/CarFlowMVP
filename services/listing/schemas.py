@@ -11,6 +11,8 @@ class CreateVehicleRequest(BaseModel):
     daily_price_cents: int = Field(gt=0)
     daily_mileage_limit: int = Field(gt=0)
     booking_mode: Literal["instant", "request"] = "instant"
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
 
 
 class UpdateVehicleRequest(BaseModel):
@@ -20,6 +22,8 @@ class UpdateVehicleRequest(BaseModel):
     daily_price_cents: int | None = Field(default=None, gt=0)
     daily_mileage_limit: int | None = Field(default=None, gt=0)
     booking_mode: Literal["instant", "request"] | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class VehicleResponse(BaseModel):
@@ -32,6 +36,13 @@ class VehicleResponse(BaseModel):
     daily_mileage_limit: int
     booking_mode: str
     approval_status: str
+    latitude: float
+    longitude: float
+
+
+class ListVehiclesResponse(BaseModel):
+    items: list[VehicleResponse]
+    next_offset: int | None
 
 
 class CreateAvailabilityBlockRequest(BaseModel):

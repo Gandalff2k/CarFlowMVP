@@ -6,8 +6,10 @@ import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
-from testcontainers.community.postgres import PostgresContainer
+from testcontainers.elasticsearch import ElasticSearchContainer
 from testcontainers.kafka import KafkaContainer
+from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 AUTH_DIR = REPO_ROOT / "services" / "auth"
@@ -45,6 +47,18 @@ def postgres_container():
 def kafka_bootstrap_servers():
     with KafkaContainer("confluentinc/cp-kafka:7.7.1") as kafka:
         yield kafka.get_bootstrap_server()
+
+
+@pytest.fixture(scope="session")
+def elasticsearch_url():
+    with ElasticSearchContainer("docker.elastic.co/elasticsearch/elasticsearch:8.15.3") as es:
+        yield es.get_url()
+
+
+@pytest.fixture(scope="session")
+def redis_url():
+    with RedisContainer("redis:7-alpine") as redis:
+        yield f"redis://{redis.get_container_host_ip()}:{redis.get_exposed_port(6379)}/0"
 
 
 @pytest.fixture(scope="session")

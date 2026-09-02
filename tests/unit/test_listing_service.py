@@ -24,7 +24,17 @@ class FakeVehicleRepository:
         return self._by_id.get(vehicle_id)
 
     async def create(
-        self, *, host_id, make, model, year, daily_price_cents, daily_mileage_limit, booking_mode
+        self,
+        *,
+        host_id,
+        make,
+        model,
+        year,
+        daily_price_cents,
+        daily_mileage_limit,
+        booking_mode,
+        latitude,
+        longitude,
     ):
         vehicle = SimpleNamespace(
             id=uuid.uuid4(),
@@ -36,6 +46,8 @@ class FakeVehicleRepository:
             daily_mileage_limit=daily_mileage_limit,
             booking_mode=booking_mode,
             approval_status="pending",
+            latitude=latitude,
+            longitude=longitude,
         )
         self._by_id[vehicle.id] = vehicle
         return vehicle
@@ -61,6 +73,8 @@ async def _make_vehicle(repo: FakeVehicleRepository, *, host_id: uuid.UUID | Non
         daily_price_cents=5000,
         daily_mileage_limit=200,
         booking_mode="instant",
+        latitude=40.7128,
+        longitude=-74.0060,
     )
 
 

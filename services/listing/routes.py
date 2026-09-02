@@ -15,6 +15,7 @@ from services.listing.schemas import (
     AvailabilityBlockResponse,
     CreateAvailabilityBlockRequest,
     CreateVehicleRequest,
+    ListVehiclesResponse,
     UpdateVehicleRequest,
     VehicleResponse,
 )
@@ -26,6 +27,7 @@ from services.listing.service import (
     approve_vehicle,
     create_vehicle,
     get_vehicle_for_viewer,
+    list_approved_vehicles,
     reject_vehicle,
     update_vehicle,
 )
@@ -44,6 +46,8 @@ def _vehicle_response(vehicle: Vehicle) -> VehicleResponse:
         daily_mileage_limit=vehicle.daily_mileage_limit,
         booking_mode=vehicle.booking_mode,
         approval_status=vehicle.approval_status,
+        latitude=vehicle.latitude,
+        longitude=vehicle.longitude,
     )
 
 
@@ -77,10 +81,33 @@ def create_router(
                 daily_price_cents=payload.daily_price_cents,
                 daily_mileage_limit=payload.daily_mileage_limit,
                 booking_mode=payload.booking_mode,
+                latitude=payload.latitude,
+                longitude=payload.longitude,
             )
             return _vehicle_response(vehicle).model_dump_json()
 
         return await respond_idempotently(guard, 201, build)
+
+    @router.get("/vehicles", response_model=ListVehiclesResponse)
+    async def list_vehicles(
+        approval_status: str = "approved",
+        limit: int = 100,
+        offset: int = 0,
+        session: AsyncSession = Depends(get_session),
+        claims: dict = Depends(get_access_claims),
+    ) -> ListVehiclesResponse:
+        # Admin/operational only: this backs the search backfill job, not
+        # public browsing — that goes through the search service (Phase 4),
+        # which is precisely why listing's own DB isn't hit for every browse.
+        require_role(claims, "admin")
+        if approval_status != "approved":
+            raise HTTPException(status_code=400, detail="only approval_status=approved is listable")
+        repo = VehicleRepository(session)
+        vehicles = await list_approved_vehicles(repo, limit=limit + 1, offset=offset)
+        next_offset = offset + limit if len(vehicles) > limit else None
+        return ListVehiclesResponse(
+            items=[_vehicle_response(v) for v in vehicles[:limit]], next_offset=next_offset
+        )
 
     @router.get("/vehicles/{vehicle_id}", response_model=VehicleResponse)
     async def get_vehicle(

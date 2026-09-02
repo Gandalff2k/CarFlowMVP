@@ -18,6 +18,8 @@ VEHICLE_PAYLOAD = {
     "daily_price_cents": 5000,
     "daily_mileage_limit": 200,
     "booking_mode": "instant",
+    "latitude": 40.7128,
+    "longitude": -74.0060,
 }
 
 

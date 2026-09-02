@@ -39,6 +39,12 @@ services:
       - name: payment-webhooks
         paths: ["/payment/payments/webhooks"]
         strip_path: false
+  - name: search-service
+    url: http://search:8000
+    routes:
+      - name: search-public
+        paths: ["/search"]
+        strip_path: false
 
 # key/secret here must match auth's JWT_ISSUER / JWT_SECRET env vars.
 consumers:

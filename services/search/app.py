@@ -6,13 +6,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from redis.asyncio import Redis
 
-from services.payment.config import PaymentSettings
-from services.payment.consumers import build_booking_command_handlers
-from services.payment.routes import create_router
-from services.payment.stripe_client import StripeClient, StripeTestModeClient
-from shared.db import create_engine, create_session_factory, session_dependency
-from shared.kafka_consumer import postgres_inbox_processor, run_consumer
+from services.search.config import SearchSettings
+from services.search.consumers import build_listing_event_processor
+from services.search.es_client import create_es_client, ensure_index
+from services.search.repository import SearchRepository
+from services.search.routes import create_router
+from shared.kafka_consumer import run_consumer
 from shared.telemetry import add_health_endpoints, add_http_metrics
 from shared.tracing import configure_telemetry
 
@@ -22,35 +23,34 @@ class JsonFormatter(logging.Formatter):
         return json.dumps({"level": record.levelname, "message": record.getMessage()})
 
 
-def create_app(
-    settings: PaymentSettings | None = None, stripe_client: StripeClient | None = None
-) -> FastAPI:
-    service_settings = settings or PaymentSettings()
+def create_app(settings: SearchSettings | None = None) -> FastAPI:
+    service_settings = settings or SearchSettings()
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, force=True)
     for handler in logging.getLogger().handlers:
         handler.setFormatter(JsonFormatter())
 
-    engine = create_engine(service_settings.database_url)
-    session_factory = create_session_factory(engine)
-    get_session = session_dependency(session_factory)
-    client = stripe_client or StripeTestModeClient(
-        api_key=service_settings.stripe_api_key,
-        test_payment_method=service_settings.stripe_test_payment_method,
-    )
+    es = create_es_client(service_settings.elasticsearch_url)
+    redis = Redis.from_url(service_settings.redis_url)
+    repo = SearchRepository(es, service_settings.index_name)
+
+    def get_repo() -> SearchRepository:
+        return repo
+
+    def get_redis() -> Redis:
+        return redis
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await ensure_index(es, service_settings.index_name)
         background_tasks = []
         if service_settings.enable_kafka_consumer:
             background_tasks.append(
                 asyncio.create_task(
                     run_consumer(
                         bootstrap_servers=service_settings.kafka_bootstrap_servers,
-                        topic=service_settings.booking_commands_topic,
-                        group_id="payment",
-                        process=postgres_inbox_processor(
-                            session_factory, build_booking_command_handlers(client)
-                        ),
+                        topic=service_settings.listing_events_topic,
+                        group_id="search",
+                        process=build_listing_event_processor(redis, repo),
                         tracer_name=service_settings.service_name,
                     )
                 )
@@ -65,8 +65,10 @@ def create_app(
                     await task
                 except asyncio.CancelledError:
                     pass
+            await es.close()
+            await redis.aclose()
 
-    app = FastAPI(title="CarFlow payment", lifespan=lifespan)
+    app = FastAPI(title="CarFlow search", lifespan=lifespan)
     add_health_endpoints(app)
     add_http_metrics(app, service_settings.service_name)
     configure_telemetry(
@@ -74,7 +76,10 @@ def create_app(
         service_settings.otel_exporter_otlp_endpoint,
         app,
     )
-    app.include_router(create_router(service_settings, get_session), prefix="/payment")
+    app.include_router(
+        create_router(service_settings.query_cache_ttl_seconds, get_repo, get_redis),
+        prefix="/search",
+    )
 
     return app
 

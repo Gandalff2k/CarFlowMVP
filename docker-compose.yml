@@ -51,6 +51,15 @@ services:
       CONFIG_STORAGE_REPLICATION_FACTOR: 1
       OFFSET_STORAGE_REPLICATION_FACTOR: 1
       STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Without this, the worker's default JsonConverter wraps every message
+      # in a {"schema": ..., "payload": ...} envelope (with the outbox row's
+      # own payload re-serialized as an escaped JSON string inside it), which
+      # is not what our consumers expect: they read the Kafka message value
+      # as the bare envelope JSON written by shared/outbox.py.
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ || exit 1"]
       interval: 10s
@@ -117,6 +126,7 @@ services:
       listing: {condition: service_healthy}
       booking: {condition: service_healthy}
       payment: {condition: service_healthy}
+      search: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null || exit 1"]
       interval: 10s
@@ -238,6 +248,32 @@ services:
       timeout: 5s
       retries: 10
 
+  search:
+    build:
+      context: .
+      dockerfile: services/search/Dockerfile
+    ports: ["8005:8000"]
+    environment:
+      SERVICE_NAME: search
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      LISTING_BASE_URL: http://listing:8000
+      JWT_SECRET: dev-secret
+      JWT_ISSUER: carflow-auth
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      listing: {condition: service_healthy}
+      otel-collector: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   kong:
     image: kong:3.8
     environment:
@@ -255,6 +291,7 @@ services:
       listing: {condition: service_healthy}
       booking: {condition: service_healthy}
       payment: {condition: service_healthy}
+      search: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s
