@@ -20,6 +20,25 @@ services:
         strip_path: false
         plugins:
           - name: jwt
+  - name: booking-service
+    url: http://booking:8000
+    routes:
+      - name: booking-protected
+        paths: ["/booking"]
+        strip_path: false
+        plugins:
+          - name: jwt
+  - name: payment-service
+    url: http://payment:8000
+    routes:
+      - name: payment-protected
+        paths: ["/payment"]
+        strip_path: false
+        plugins:
+          - name: jwt
+      - name: payment-webhooks
+        paths: ["/payment/payments/webhooks"]
+        strip_path: false
 
 # key/secret here must match auth's JWT_ISSUER / JWT_SECRET env vars.
 consumers:

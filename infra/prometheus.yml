@@ -11,3 +11,9 @@ scrape_configs:
   - job_name: listing
     static_configs:
       - targets: [listing:8000]
+  - job_name: booking
+    static_configs:
+      - targets: [booking:8000]
+  - job_name: payment
+    static_configs:
+      - targets: [payment:8000]

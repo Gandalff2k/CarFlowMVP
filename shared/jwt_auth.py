@@ -4,8 +4,6 @@ import jwt
 from fastapi import Header, HTTPException
 
 
-
-
 def decode_token(token: str, *, secret: str, issuer: str) -> dict:
     return jwt.decode(token, secret, algorithms=["HS256"], issuer=issuer)
 

@@ -1,0 +1,21 @@
+{
+  "name": "payment-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "carflow",
+    "database.password": "carflow",
+    "database.dbname": "payment",
+    "topic.prefix": "payment",
+    "slot.name": "payment_outbox",
+    "publication.name": "payment_outbox_publication",
+    "schema.include.list": "public",
+    "table.include.list": "public.outbox",
+    "tombstones.on.delete": "false",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.route.topic.replacement": "payment.booking.events"
+  }
+}

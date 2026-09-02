@@ -3,8 +3,8 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.listing.models import Vehicle
-from services.listing.outbox import write_outbox_event
 from services.listing.repository import AvailabilityBlockRepository, VehicleRepository
+from shared.outbox import write_outbox_event
 
 MUTABLE_VEHICLE_FIELDS = (
     "make",
@@ -67,7 +67,8 @@ async def get_vehicle_for_viewer(
     vehicle = await repo.get_by_id(vehicle_id)
     if vehicle is None:
         raise VehicleNotFoundError(vehicle_id)
-    if viewer_role != "admin" and vehicle.host_id != viewer_id:
+    is_owner_or_admin = viewer_role == "admin" or vehicle.host_id == viewer_id
+    if not is_owner_or_admin and vehicle.approval_status != "approved":
         raise NotVehicleOwnerError(vehicle_id)
     return vehicle
 
@@ -91,7 +92,7 @@ async def update_vehicle(
         aggregate_type="vehicle",
         aggregate_id=str(vehicle.id),
         event_type="vehicle_updated",
-        payload={"vehicle_id": str(vehicle.id)},
+        data={"vehicle_id": str(vehicle.id)},
     )
     return vehicle
 
@@ -111,7 +112,7 @@ async def approve_vehicle(
         aggregate_type="vehicle",
         aggregate_id=str(vehicle.id),
         event_type="vehicle_approved",
-        payload={"vehicle_id": str(vehicle.id)},
+        data={"vehicle_id": str(vehicle.id)},
     )
     return vehicle
 

@@ -7,10 +7,13 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.kafka import KafkaContainer
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 AUTH_DIR = REPO_ROOT / "services" / "auth"
 LISTING_DIR = REPO_ROOT / "services" / "listing"
+BOOKING_DIR = REPO_ROOT / "services" / "booking"
+PAYMENT_DIR = REPO_ROOT / "services" / "payment"
 
 
 def _run_migrations(service_dir: pathlib.Path, database_url: str) -> None:
@@ -39,6 +42,12 @@ def postgres_container():
 
 
 @pytest.fixture(scope="session")
+def kafka_bootstrap_servers():
+    with KafkaContainer("confluentinc/cp-kafka:7.7.1") as kafka:
+        yield kafka.get_bootstrap_server()
+
+
+@pytest.fixture(scope="session")
 def database_url(postgres_container: PostgresContainer) -> str:
     url = postgres_container.get_connection_url().replace(
         "postgresql+psycopg2", "postgresql+asyncpg"
@@ -56,3 +65,25 @@ def listing_database_url(postgres_container: PostgresContainer) -> str:
     listing_url = base_url.rsplit("/", 1)[0] + "/listing_test"
     _run_migrations(LISTING_DIR, listing_url)
     return listing_url
+
+
+@pytest.fixture(scope="session")
+def booking_database_url(postgres_container: PostgresContainer) -> str:
+    base_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    asyncio.run(_create_database(base_url, "booking_test"))
+    booking_url = base_url.rsplit("/", 1)[0] + "/booking_test"
+    _run_migrations(BOOKING_DIR, booking_url)
+    return booking_url
+
+
+@pytest.fixture(scope="session")
+def payment_database_url(postgres_container: PostgresContainer) -> str:
+    base_url = postgres_container.get_connection_url().replace(
+        "postgresql+psycopg2", "postgresql+asyncpg"
+    )
+    asyncio.run(_create_database(base_url, "payment_test"))
+    payment_url = base_url.rsplit("/", 1)[0] + "/payment_test"
+    _run_migrations(PAYMENT_DIR, payment_url)
+    return payment_url

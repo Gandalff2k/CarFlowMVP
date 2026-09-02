@@ -150,7 +150,7 @@ async def test_get_vehicle_for_viewer_allows_admin_regardless_of_owner() -> None
     assert viewed.id == vehicle.id
 
 
-async def test_get_vehicle_for_viewer_rejects_other_host() -> None:
+async def test_get_vehicle_for_viewer_rejects_other_host_while_pending() -> None:
     repo = FakeVehicleRepository()
     vehicle = await _make_vehicle(repo)
 
@@ -158,6 +158,18 @@ async def test_get_vehicle_for_viewer_rejects_other_host() -> None:
         await get_vehicle_for_viewer(
             repo, vehicle_id=vehicle.id, viewer_id=uuid.uuid4(), viewer_role="host"
         )
+
+
+async def test_get_vehicle_for_viewer_allows_anyone_once_approved() -> None:
+    repo = FakeVehicleRepository()
+    vehicle = await _make_vehicle(repo)
+    vehicle.approval_status = "approved"
+
+    viewed = await get_vehicle_for_viewer(
+        repo, vehicle_id=vehicle.id, viewer_id=uuid.uuid4(), viewer_role="renter"
+    )
+
+    assert viewed.id == vehicle.id
 
 
 async def test_update_vehicle_only_changes_provided_fields() -> None:
