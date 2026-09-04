@@ -14,7 +14,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{route=\"/booking/bookings\", method=\"POST\"}[1m]))",
+          "expr": "sum(rate(http_requests_total{service=\"booking\", route=\"/bookings\", method=\"POST\"}[1m]))",
           "legendFormat": "bookings/s"
         }
       ]

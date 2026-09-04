@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[AsyncSession, dict[str, Any]], Awaitable[None]]
 EventProcessor = Callable[[str, str, dict[str, Any]], Awaitable[None]]
 
-# Labeled by service + topic only — never by partition or consumer-group
-# member, which would be unbounded/high-cardinality for no operational
-# benefit (there's one group per service per topic in this codebase anyway).
+# Labeled by service + topic only
 KAFKA_CONSUMER_LAG = Gauge(
     "kafka_consumer_lag",
     "Messages behind the topic's latest offset, summed across assigned partitions",

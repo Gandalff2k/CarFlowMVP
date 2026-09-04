@@ -1,11 +1,6 @@
 from redis.asyncio import Redis
 
-# Shared between admin (writer) and telemetry (reader) — a real, if minimal,
-# safety mechanism rather than a decorative stub: admin records *intent* in
-# its own audit log (services/admin/models.py:AdminAction) regardless, but
-# this flag is what telemetry actually checks and enforces server-side
-# (services/telemetry/app.py forces speed_kph=0 while it's set), since a
-# real device cannot be trusted to obey a remote command on its own.
+# Shared between admin (writer) and telemetry (reader) 
 
 _KEY_PREFIX = "kill-switch"
 

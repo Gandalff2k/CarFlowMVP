@@ -5,5 +5,5 @@ __pycache__/
 .env
 *.egg-info/
 .ruff_cache/
-PLAN.md
 CLAUDE.md
+scripts/local_smoke.py

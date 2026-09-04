@@ -5,11 +5,7 @@ from opentelemetry import propagate
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Column names match Debezium's outbox EventRouter SMT defaults exactly
-# (id, aggregatetype, aggregateid, type, payload) so connector configs need
-# no field-name overrides. The payload itself carries event_id/event_type
-# alongside the domain data so a consumer can dedup and dispatch from the
-# Kafka message value alone, without depending on SMT header behaviour.
+
 
 
 def _current_trace_context() -> dict[str, str]:
