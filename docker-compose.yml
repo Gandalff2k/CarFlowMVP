@@ -22,7 +22,7 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
       KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,EXTERNAL://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://${KAFKA_EXTERNAL_ADVERTISED_HOST:-localhost}:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -51,11 +51,6 @@ services:
       CONFIG_STORAGE_REPLICATION_FACTOR: 1
       OFFSET_STORAGE_REPLICATION_FACTOR: 1
       STATUS_STORAGE_REPLICATION_FACTOR: 1
-      # Without this, the worker's default JsonConverter wraps every message
-      # in a {"schema": ..., "payload": ...} envelope (with the outbox row's
-      # own payload re-serialized as an escaped JSON string inside it), which
-      # is not what our consumers expect: they read the Kafka message value
-      # as the bare envelope JSON written by shared/outbox.py.
       CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
@@ -377,9 +372,6 @@ services:
       retries: 10
 
   web:
-    # Manual test console (web/index.html) — a hand-rolled static page, not a
-    # product UI. Served over http:// rather than opened as a file:// URL so
-    # WebSocket/fetch calls to Kong behave the same as a real browser client.
     image: nginx:alpine
     ports: ["8090:80"]
     volumes: ["./web:/usr/share/nginx/html:ro"]

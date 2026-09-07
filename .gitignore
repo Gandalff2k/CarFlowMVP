@@ -7,3 +7,12 @@ __pycache__/
 .ruff_cache/
 CLAUDE.md
 scripts/local_smoke.py
+
+
+deploy/hetzner/env.sh
+deploy/k8s/kubeconfig
+kubeconfig
+deploy/loadtest/seed_data.json
+deploy/loadtest/results_*.csv
+deploy/loadtest/report.html
+deploy/RUNBOOK.md

@@ -1,0 +1,29 @@
+# The two consumers/paths most likely to be the actual bottleneck once
+# Kafka partitions stop being the ceiling (see deploy/README.md): booking
+# (the saga's HTTP + consumer path) and telemetry (the WebSocket ingest
+# path). Requires metrics-server (installed by bootstrap-k3s.sh).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: booking
+  namespace: carflow
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: booking}
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: telemetry
+  namespace: carflow
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: telemetry}
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}

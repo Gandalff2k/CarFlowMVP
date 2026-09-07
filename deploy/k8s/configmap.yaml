@@ -1,0 +1,17 @@
+# Values shared by every app service. Per-service DATABASE_URL (different
+# db name each) and JWT_SECRET/STRIPE keys (secret material) stay out of
+# here — see the carflow-secrets Secret created by deploy.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carflow-config
+  namespace: carflow
+data:
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  JWT_ISSUER: carflow-auth
+  LISTING_BASE_URL: http://listing:8000
+  BOOKING_BASE_URL: http://booking:8000
+  REDIS_URL: redis://redis:6379/0
+  MONGO_URL: mongodb://mongo:27017
+  ELASTICSEARCH_URL: http://elasticsearch:9200

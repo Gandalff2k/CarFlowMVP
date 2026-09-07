@@ -1,0 +1,49 @@
+# kong-config ConfigMap is created by deploy.sh straight from infra/kong.yml
+# (same file local dev uses) — Kong's routes reference app services by
+# their k8s Service names (auth, listing, booking, ...), which match the
+# docker-compose service names exactly, so the file needs zero changes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  namespace: carflow
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: kong}}
+  template:
+    metadata: {labels: {app: kong}}
+    spec:
+      containers:
+        - name: kong
+          image: kong:3.8
+          env:
+            - {name: KONG_DATABASE, value: "off"}
+            - {name: KONG_DECLARATIVE_CONFIG, value: /kong/declarative/kong.yml}
+            - {name: KONG_PROXY_ACCESS_LOG, value: /dev/stdout}
+            - {name: KONG_ADMIN_ACCESS_LOG, value: /dev/stdout}
+            - {name: KONG_PROXY_ERROR_LOG, value: /dev/stderr}
+            - {name: KONG_ADMIN_ERROR_LOG, value: /dev/stderr}
+            - {name: KONG_ADMIN_LISTEN, value: 0.0.0.0:8001}
+          ports: [{containerPort: 8000}, {containerPort: 8001}]
+          volumeMounts:
+            - {name: kong-config, mountPath: /kong/declarative}
+          resources:
+            requests: {cpu: 150m, memory: 192Mi}
+            limits: {cpu: 750m, memory: 384Mi}
+          readinessProbe: {httpGet: {path: /status, port: 8001}, initialDelaySeconds: 5, periodSeconds: 5}
+      volumes:
+        - name: kong-config
+          configMap: {name: kong-config}
+---
+# NodePort, not LoadBalancer — see deploy/README.md for why (no
+# Hetzner Cloud Controller Manager in this manually-bootstrapped k3s).
+# Reachable at http://<any-node-public-ip>:30080 from Locust.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong
+  namespace: carflow
+spec:
+  type: NodePort
+  selector: {app: kong}
+  ports: [{port: 8000, targetPort: 8000, nodePort: 30080}]

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking
+  namespace: carflow
+spec:
+  replicas: 2   # HPA (deploy/k8s/hpa.yaml) scales this up under load
+  selector: {matchLabels: {app: booking}}
+  template:
+    metadata:
+      labels: {app: booking}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
+    spec:
+      containers:
+        - name: booking
+          image: ghcr.io/${GHCR_USER}/carflow-booking:${IMAGE_TAG}
+          ports: [{containerPort: 8000}]
+          envFrom: [{configMapRef: {name: carflow-config}}]
+          env:
+            - {name: SERVICE_NAME, value: booking}
+            - {name: DATABASE_URL, value: "postgresql+asyncpg://carflow:carflow@postgres:5432/booking"}
+            - name: JWT_SECRET
+              valueFrom: {secretKeyRef: {name: carflow-secrets, key: JWT_SECRET}}
+          resources:
+            requests: {cpu: 150m, memory: 192Mi}
+            limits: {cpu: 750m, memory: 384Mi}
+          livenessProbe: {httpGet: {path: /healthz, port: 8000}, initialDelaySeconds: 5, periodSeconds: 10}
+          readinessProbe: {httpGet: {path: /readyz, port: 8000}, initialDelaySeconds: 5, periodSeconds: 5}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking
+  namespace: carflow
+spec:
+  selector: {app: booking}
+  ports: [{port: 8000, targetPort: 8000}]

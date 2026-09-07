@@ -1,0 +1,20 @@
+namespace: carflow
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - infra-endpoints.yaml
+  - auth.yaml
+  - listing.yaml
+  - booking.yaml
+  - payment.yaml
+  - search.yaml
+  - telemetry.yaml
+  - admin.yaml
+  - notification.yaml
+  - kong.yaml
+  - observability.yaml
+  - hpa.yaml
+# ${INFRA_PRIVATE_IP}, ${GHCR_USER}, ${IMAGE_TAG} placeholders throughout
+# these files are plain opaque strings as far as kustomize is concerned —
+# deploy.sh pipes the fully rendered `kubectl kustomize` output through
+# envsubst before applying, so one substitution pass covers all of them.
