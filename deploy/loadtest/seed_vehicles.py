@@ -28,14 +28,31 @@ def _idempotency_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Idempotency-Key": str(uuid.uuid4())}
 
 
+async def _post_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    # Kong's rate-limiting plugin (infra/kong.yml: 60/min, policy: local)
+    # applies to seeding traffic exactly like any other client — a seed run
+    # large enough to matter (hundreds of renters) hits 429s well before
+    # finishing without this. Retry-After is Kong's own hint for how long
+    # to back off.
+    while True:
+        response = await client.post(url, **kwargs)
+        if response.status_code != 429:
+            return response
+        wait = float(response.headers.get("retry-after", 2))
+        await asyncio.sleep(wait)
+
+
 async def register_and_login(client: httpx.AsyncClient, kong_url: str, *, role: str) -> dict:
     email = f"loadtest-{role}-{uuid.uuid4().hex[:10]}@example.com"
-    await client.post(
+    await _post_with_retry(
+        client,
         f"{kong_url}/auth/register",
         json={"name": role.capitalize(), "email": email, "password": PASSWORD, "role": role},
         headers={"Idempotency-Key": str(uuid.uuid4())},
     )
-    response = await client.post(f"{kong_url}/auth/login", json={"email": email, "password": PASSWORD})
+    response = await _post_with_retry(
+        client, f"{kong_url}/auth/login", json={"email": email, "password": PASSWORD}
+    )
     response.raise_for_status()
     return {"email": email, "password": PASSWORD, "token": response.json()["access_token"]}
 
@@ -58,8 +75,8 @@ async def ensure_admin(client: httpx.AsyncClient, kong_url: str, *, postgres_hos
             )
     finally:
         await conn.close()
-    response = await client.post(
-        f"{kong_url}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
+    response = await _post_with_retry(
+        client, f"{kong_url}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     )
     response.raise_for_status()
     return response.json()["access_token"]
@@ -79,11 +96,15 @@ async def create_and_approve_vehicle(
         "longitude": -74.0060 + random.uniform(-0.1, 0.1),
     }
     created = (
-        await client.post(
-            f"{kong_url}/listing/vehicles", json=payload, headers=_idempotency_headers(host_token)
+        await _post_with_retry(
+            client,
+            f"{kong_url}/listing/vehicles",
+            json=payload,
+            headers=_idempotency_headers(host_token),
         )
     ).json()
-    await client.post(
+    await _post_with_retry(
+        client,
         f"{kong_url}/listing/vehicles/{created['id']}/approve",
         headers=_idempotency_headers(admin_token),
     )

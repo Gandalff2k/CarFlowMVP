@@ -15,4 +15,5 @@ kubeconfig
 deploy/loadtest/seed_data.json
 deploy/loadtest/results_*.csv
 deploy/loadtest/report.html
+deploy/loadtest/*.log
 deploy/RUNBOOK.md

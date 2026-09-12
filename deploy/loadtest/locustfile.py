@@ -62,7 +62,7 @@ class BookingUser(HttpUser):
     def create_booking(self) -> None:
         start = dt.date.today() + dt.timedelta(days=random.randint(10, 90))
         end = start + dt.timedelta(days=random.randint(2, 5))
-        self.client.post(
+        response = self.client.post(
             "/booking/bookings",
             json={
                 "vehicle_id": random.choice(VEHICLE_IDS),
@@ -72,11 +72,20 @@ class BookingUser(HttpUser):
             headers=self._auth_headers(),
             name="/booking/bookings [POST]",
         )
+        if response.status_code == 201:
+            self.last_booking_id = response.json()["id"]
 
     @task(1)
-    def list_own_bookings(self) -> None:
+    def get_own_booking(self) -> None:
+        # GET /bookings (list) is admin/operational only (see
+        # services/booking/routes.py) — a renter reads their own booking by
+        # id. locustfile.py originally hit the list endpoint here and got a
+        # 100% 403 rate on the first real local run; this is the fix.
+        booking_id = getattr(self, "last_booking_id", None)
+        if booking_id is None:
+            return
         self.client.get(
-            "/booking/bookings",
+            f"/booking/bookings/{booking_id}",
             headers=self._auth_headers(),
-            name="/booking/bookings [GET]",
+            name="/booking/bookings/{id} [GET]",
         )
