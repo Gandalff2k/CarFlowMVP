@@ -13,15 +13,18 @@ streams) → return → payment capture (+ mileage-overage fee if applicable).
 
 | Layer | Choice |
 |---|---|
-| Services | Python 3.12, FastAPI, fully async (SQLAlchemy async, asyncpg) |
-| API gateway | Kong (JWT verification, rate limiting, CORS, request correlation) |
-| Event bus | Kafka, via the **outbox pattern** + **Debezium CDC** — no service publishes to Kafka directly from request handlers |
-| Datastores | Postgres (one database per transactional service), Elasticsearch (search read model), MongoDB (telemetry), Redis (cache/kill-switch) |
-| Observability | OpenTelemetry (traces + metrics) → Jaeger + Prometheus + Grafana, wired from day one, not bolted on |
-| Auth | JWT (HS256), issued by a dedicated auth service, verified at the gateway |
-| Local runtime | docker-compose, 21 containers, one command |
-| Deploy target | Kubernetes (Kustomize) on Hetzner Cloud — manifests and provisioning scripts written and validated; not yet run at production scale (see Results) |
-| Load testing | Locust (HTTP) + a custom asyncio WebSocket generator (telemetry) |
+| Services | Python 3.12, FastAPI, async (SQLAlchemy, asyncpg) |
+| API gateway | Kong — JWT, rate limiting, CORS |
+| Event bus | Kafka, via outbox pattern + Debezium CDC |
+| Postgres | one database per transactional service |
+| Elasticsearch | search read model |
+| MongoDB | telemetry store |
+| Redis | cache + kill-switch flag |
+| Observability | OpenTelemetry → Jaeger + Prometheus + Grafana |
+| Auth | JWT (HS256) |
+| Local runtime | docker-compose, 21 containers |
+| Deploy target | Kubernetes (Kustomize) on Hetzner — scripted, not yet run at scale |
+| Load testing | Locust + a custom asyncio WebSocket generator (telemetry) |
 
 **Services:** auth, listing, booking, payment, search, telemetry, admin,
 notification — one concern each, one datastore each, no shared database.
@@ -30,39 +33,36 @@ notification — one concern each, one datastore each, no shared database.
 
 ```mermaid
 flowchart TB
-    Client(["Client / web console"])
+    Client["Client or web console"]
+    Kong["Kong API Gateway - JWT, rate limiting, CORS"]
 
-    subgraph gw["API Gateway"]
-        Kong[["Kong<br/>JWT · rate-limit · CORS"]]
+    subgraph Services
+        Auth["auth service"]
+        Listing["listing service"]
+        Search["search service"]
+        Booking["booking service"]
+        Payment["payment service"]
+        Telemetry["telemetry service"]
+        Admin["admin service"]
+        Notification["notification service"]
     end
 
-    subgraph svc["Stateless services"]
-        Auth["auth"]
-        Listing["listing"]
-        Search["search"]
-        Booking["booking"]
-        Payment["payment"]
-        Telemetry["telemetry"]
-        Admin["admin"]
-        Notification["notification"]
-    end
-
-    subgraph bus["Event backbone"]
+    subgraph EventBackbone["Event backbone"]
         Outbox[("outbox tables")]
         Debezium{{"Debezium CDC"}}
         Kafka[/"Kafka"/]
     end
 
-    subgraph db["Datastores — one per service"]
-        PgAuth[("Postgres: auth")]
-        PgListing[("Postgres: listing")]
-        PgBooking[("Postgres: booking")]
-        PgPayment[("Postgres: payment")]
-        PgAdmin[("Postgres: admin")]
-        PgNotif[("Postgres: notification")]
-        ES[("Elasticsearch")]
-        Mongo[("MongoDB")]
-        Redis[("Redis")]
+    subgraph Datastores["Datastores - one per service, no sharing"]
+        PgAuth[("Postgres - auth db")]
+        PgListing[("Postgres - listing db")]
+        PgBooking[("Postgres - booking db")]
+        PgPayment[("Postgres - payment db")]
+        PgAdmin[("Postgres - admin db")]
+        PgNotif[("Postgres - notification db")]
+        ES[("Elasticsearch - search index")]
+        Mongo[("MongoDB - telemetry store")]
+        Redis[("Redis - cache and kill-switch flag")]
     end
 
     Client --> Kong
@@ -86,9 +86,9 @@ flowchart TB
     Telemetry == "telemetry.raw" ==> Kafka
     Kafka == "telemetry.raw" ==> Telemetry
 
-    Admin -. "proxies operator's own token" .-> Listing
-    Admin -. "proxies operator's own token" .-> Booking
-    Admin -- "kill-switch flag" --> Redis
+    Admin -. "proxies operator token" .-> Listing
+    Admin -. "proxies operator token" .-> Booking
+    Admin --> Redis
 
     Auth --> PgAuth
     Listing --> PgListing
@@ -137,81 +137,39 @@ own audit log.
 
 ## Results
 
-Two honestly different things, kept separate on purpose — a made-up
-"handles 50k req/s" number is worth less than a real, small one plus the
-math for the rest.
+Real numbers, kept separate from production sizing math — no fabricated
+benchmark.
 
 ### Measured locally
 
-Single Docker host (16GB RAM, one Kong instance), the full 21-container
-stack, real traffic through real services — not a subset, not stubs.
+16GB Docker host, full 21-container stack, real traffic.
 
-**HTTP load** (Locust, 30 simulated users — 25 browsing/searching, 5
-logging in and booking — 40s):
+| Endpoint | Requests | Failures | Median |
+|---|---|---|---|
+| `POST /auth/login` | 5 | 0 | 2300ms (argon2, expected) |
+| `POST /booking/bookings` | 6 | 0 | 63ms |
+| `GET /search/vehicles` | 107 | 47 (`429`) | 6ms |
 
-| Endpoint | Requests | Failures | Median | Notes |
-|---|---|---|---|---|
-| `POST /auth/login` | 5 | 0 | 2300ms | Argon2 hashing is deliberately slow — expected |
-| `POST /booking/bookings` | 6 | 0 | 63ms | Triggers the full outbox→Debezium→Kafka→payment saga |
-| `GET /search/vehicles` | 107 | 47 (all `429`) | 6ms | See finding below |
+Telemetry: 18/20 WS connected, 1063 packets, 0 errors, ~0.98 Hz/vehicle
+(target 1Hz).
 
-**Telemetry ingest** (20 simulated vehicles, WebSocket, target 1 packet/sec
-each, staggered connection start): 18/20 connected, **1063 packets sent,
-zero send/recv errors**, sustained rate ≈0.98 Hz/vehicle — matching the
-1Hz target with no measurable degradation once connected.
+**Bottleneck, found not guessed:** every failure was Kong's rate limit
+(60/min, shared across routes) — confirmed in the failure log. Past that
+limit, everything was fast and clean. Also caught a bug in the test itself
+(it hit an admin-only endpoint) — fixed in `deploy/loadtest/locustfile.py`.
 
-**What actually capped this run — found, not guessed:** every failure was
-a `429` from Kong's own rate-limiting plugin (`infra/kong.yml`: 60
-requests/minute, shared across *all* routes for one client identity), 
-confirmed from Locust's failure log, not assumed. Once a request or WS
-handshake got past that limiter, it succeeded fast (single-digit-ms search
-reads) and stayed reliable — the ceiling in this run was a deliberately
-conservative gateway default doing its job on a single Kong instance, not
-application code, Postgres, or Kafka running out of headroom. (A real
-finding from this run also fixed a bug in the *test* itself: the original
-Locust script hit `GET /bookings`, which is admin-only by design — a
-renter reads their own booking via `GET /bookings/{id}`; fixed in
-`deploy/loadtest/locustfile.py`.)
+### Production capacity (designed, not yet run)
 
-### Designed-for production capacity (not yet run)
+K8s/Hetzner is scripted (`deploy/`) but not run at scale — a cost call, not
+a technical blocker.
 
-Kubernetes on Hetzner is fully scripted (`deploy/`) but hasn't been run at
-its target scale — that's a cost decision, not a technical blocker. What's
-below is the sizing math behind that plan, not a benchmark result:
-
-- **Kafka partitions:** every real topic ships with 1 partition by
-  default (confirmed via `kafka-topics --describe` on the local stack) —
-  scaling consumer replicas today buys zero parallelism. The deploy
-  scripts create them with 6 partitions instead (verified safe: every
-  producer keys by aggregate/vehicle id, so per-entity ordering holds).
-- **Horizontal scaling:** booking and telemetry (the two paths under
-  direct load) are configured with `HorizontalPodAutoscaler`s, 2→6
-  replicas on CPU utilization.
-- **Connection budget:** at max scale-out, pooled Postgres connections
-  across all replicas sum to ~225 (SQLAlchemy defaults, unconfigured
-  pool size) — Postgres is tuned to `max_connections=300` for the
-  Hetzner deployment specifically because the stock default (100) would
-  reject connections outright under that load, not just run slow.
-- **Kong in that topology runs 2+ replicas** behind a NodePort; since its
-  rate-limit policy (`local`) counts per replica independently, the
-  effective ceiling that capped the local run above rises accordingly —
-  a known, deliberate tradeoff, not an oversight.
-
-## Repo layout
-
-```
-services/      one directory per service (own Dockerfile, migrations, tests)
-shared/        cross-cutting: db session, outbox/inbox, JWT, OTel wiring
-infra/         kong.yml, otel-collector config, Grafana dashboards, Debezium connectors
-deploy/        Hetzner provisioning + Kubernetes manifests + load-test tooling
-web/           a hand-rolled manual test console (not a product UI)
-```
+- Kafka topics: 1 partition measured locally → bumped to 6 for the deploy (producers key by entity, so this is safe).
+- Booking/telemetry: HPA 2→6 replicas.
+- Postgres: tuned to 300 max connections (stock 100 would reject at max scale-out).
 
 ## Running it locally
 
 ```bash
 docker compose up -d --build
-# Kong:    http://localhost:8080
-# Grafana: http://localhost:3000
-# Jaeger:  http://localhost:16686
 ```
+Kong `:8080`, Grafana `:3000`, Jaeger `:16686`.
