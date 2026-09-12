@@ -1,20 +1,20 @@
 # CarFlow
 
-Peer-to-peer car-sharing backend, built as a reference microservices project.
-The point isn't rich business logic — the booking rules are deliberately
-thin — it's the plumbing: event-driven services, CDC, sagas, observability,
-and a real (if modestly-scaled) load test, not a diagram of one.
+MVP for peer-to-peer car-sharing backend, built as a reference microservices project.
+At this stage the point isn't rich business logic - the booking rules are deliberately
+thin - it's the plumbing: event-driven services, CDC, sagas, observability and other.
+The full project under development
 
 **Journey covered end-to-end:** register → host lists a car → admin approves
 → renter searches → books → payment hold → handover → active (telemetry
-streams) → return → payment capture (+ mileage-overage fee if applicable).
+streams) → return → payment capture .
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
 | Services | Python 3.12, FastAPI, async (SQLAlchemy, asyncpg) |
-| API gateway | Kong — JWT, rate limiting, CORS |
+| API gateway | Kong - JWT, rate limiting, CORS |
 | Event bus | Kafka, via outbox pattern + Debezium CDC |
 | Postgres | one database per transactional service |
 | Elasticsearch | search read model |
@@ -22,8 +22,7 @@ streams) → return → payment capture (+ mileage-overage fee if applicable).
 | Redis | cache + kill-switch flag |
 | Observability | OpenTelemetry → Jaeger + Prometheus + Grafana |
 | Auth | JWT (HS256) |
-| Local runtime | docker-compose, 21 containers |
-| Deploy target | Kubernetes (Kustomize) on Hetzner — scripted, not yet run at scale |
+| Deploy target | Kubernetes (Kustomizable) on Hetzner — scripted, not yet run at scale |
 | Load testing | Locust + a custom asyncio WebSocket generator (telemetry) |
 
 **Services:** auth, listing, booking, payment, search, telemetry, admin,
@@ -54,20 +53,6 @@ notification — one concern each, one datastore each, no shared database.
   Elasticsearch index is a read model fed by listing's events, not a
   live join against listing's Postgres).
 
-## Results
-
-Real numbers, kept separate from production sizing math — no fabricated
-benchmark.
-
-
-### Production capacity (designed)
-
-K8s/Hetzner is scripted (`deploy/`) but not run at scale — a cost call, not
-a technical blocker.
-
-- Kafka topics: 1 partition measured locally → bumped to 6 for the deploy (producers key by entity, so this is safe).
-- Booking/telemetry: HPA 2→6 replicas.
-- Postgres: tuned to 300 max connections (stock 100 would reject at max scale-out).
 
 ## Running it locally
 
