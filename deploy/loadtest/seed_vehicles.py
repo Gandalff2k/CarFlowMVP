@@ -127,8 +127,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kong-url", required=True, help="e.g. http://<agent-public-ip>:30080")
     parser.add_argument("--postgres-host", required=True, help="infra VM's private IP")
+    # Vehicle pool deliberately stays modest (200) even as renters/Locust
+    # users scale up — that keeps real contention on the same car+dates,
+    # which is what actually exercises the no-double-booking invariant
+    # under concurrent load, not just raw throughput.
     parser.add_argument("--hosts", type=int, default=20)
-    parser.add_argument("--vehicles-per-host", type=int, default=5)
-    parser.add_argument("--renters", type=int, default=200)
+    parser.add_argument("--vehicles-per-host", type=int, default=10)
+    parser.add_argument("--renters", type=int, default=1500)
     parser.add_argument("--out", default="seed_data.json")
     asyncio.run(main(parser.parse_args()))

@@ -11,6 +11,7 @@ spec:
       labels: {app: payment}
       annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
     spec:
+      imagePullSecrets: [{name: ghcr-pull}]
       containers:
         - name: payment
           image: ghcr.io/${GHCR_USER}/carflow-payment:${IMAGE_TAG}

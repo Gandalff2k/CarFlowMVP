@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-.
 set -euo pipefail
 
 : "${NETWORK_NAME:?source deploy/hetzner/env.sh first}"
@@ -14,18 +13,28 @@ MY_IP="$(curl -fsS https://ifconfig.me)"
 hcloud firewall create --name "$FIREWALL_NAME"
 hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 22 --source-ips "${MY_IP}/32"
 hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 6443 --source-ips "${MY_IP}/32"   # k3s API
-hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 3000 --source-ips "${MY_IP}/32"   # grafana (NodePort, see deploy/k8s/observability.yaml)
-hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 16686 --source-ips "${MY_IP}/32" # jaeger UI
+# NodePort services are reached on the node's actual NodePort number, not
+# the pod's internal port — 3000/16686 (Grafana/Jaeger's container ports)
+# are not reachable from outside the cluster at all, only 30300/30686 are.
 hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 30080 --source-ips "${MY_IP}/32" # kong NodePort
-hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 30300 --source-ips "${MY_IP}/32" # grafana NodePort (alt, see note in observability.yaml)
+hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 30300 --source-ips "${MY_IP}/32" # grafana NodePort
+hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 30686 --source-ips "${MY_IP}/32" # jaeger UI NodePort
 hcloud firewall add-rule "$FIREWALL_NAME" --direction in --protocol tcp --port 8089 --source-ips "${MY_IP}/32" # locust web UI
 
 echo "==> servers"
-hcloud server create --name infra        --type cx32  --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
+# Bumped to Hetzner's dedicated-vCPU line (ccx) for a bigger, cleaner test:
+# a shared-vCPU node (cx/cpx) can get CPU-steal jitter from other tenants,
+# which would contaminate exactly the measurement this test exists to take
+# (does the Kafka-partition fix + HPA actually scale). ccx43 (16 vCPU/64GB)
+# for infra keeps Postgres/Kafka/ES comfortably out of memory pressure —
+# see deploy/RUNBOOK.md for the max_connections math and why 64GB, not
+# 128GB. k3s-server stays cpx21: nothing gets scheduled there regardless of
+# how big the test gets.
+hcloud server create --name infra        --type ccx43 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
 hcloud server create --name k3s-server   --type cpx21 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
-hcloud server create --name k3s-agent-1  --type cpx31 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
-hcloud server create --name k3s-agent-2  --type cpx31 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
-hcloud server create --name loadgen      --type cpx31 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
+hcloud server create --name k3s-agent-1  --type ccx33 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
+hcloud server create --name k3s-agent-2  --type ccx33 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
+hcloud server create --name loadgen      --type ccx33 --image "$IMAGE" --location "$LOCATION" --network "$NETWORK_NAME" --firewall "$FIREWALL_NAME" --ssh-key "$SSH_KEY_NAME"
 
 echo "==> waiting for private-network attachment"
 sleep 15

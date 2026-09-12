@@ -11,6 +11,7 @@ spec:
       labels: {app: booking}
       annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
     spec:
+      imagePullSecrets: [{name: ghcr-pull}]
       containers:
         - name: booking
           image: ghcr.io/${GHCR_USER}/carflow-booking:${IMAGE_TAG}

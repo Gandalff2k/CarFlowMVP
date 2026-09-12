@@ -10,6 +10,7 @@ set -euo pipefail
 INFRA_PRIVATE_IP="${1:?usage: deploy.sh <infra-private-ip>}"
 export INFRA_PRIVATE_IP
 : "${GHCR_USER:?source deploy/hetzner/env.sh first}"
+: "${GHCR_TOKEN:?source deploy/hetzner/env.sh first}"
 : "${IMAGE_TAG:?source deploy/hetzner/env.sh first}"
 : "${JWT_SECRET:?source deploy/hetzner/env.sh first}"
 
@@ -45,6 +46,13 @@ kubectl create secret generic carflow-secrets -n carflow \
   --from-literal=JWT_SECRET="$JWT_SECRET" \
   --from-literal=STRIPE_API_KEY="${STRIPE_API_KEY:-}" \
   --from-literal=STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+echo "==> registry pull secret (GHCR packages default to private — without this, every pod ImagePullBackOffs)"
+kubectl create secret docker-registry ghcr-pull -n carflow \
+  --docker-server=ghcr.io \
+  --docker-username="$GHCR_USER" \
+  --docker-password="$GHCR_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> rendering + applying the app/observability manifests"

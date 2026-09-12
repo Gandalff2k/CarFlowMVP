@@ -11,6 +11,7 @@ spec:
       labels: {app: telemetry}
       annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
     spec:
+      imagePullSecrets: [{name: ghcr-pull}]
       containers:
         - name: telemetry
           image: ghcr.io/${GHCR_USER}/carflow-telemetry:${IMAGE_TAG}

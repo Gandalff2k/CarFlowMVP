@@ -35,7 +35,7 @@ spec:
         - name: kong-config
           configMap: {name: kong-config}
 ---
-# NodePort, not LoadBalancer — see deploy/README.md for why (no
+# NodePort, not LoadBalancer — see deploy/RUNBOOK.md for why (no
 # Hetzner Cloud Controller Manager in this manually-bootstrapped k3s).
 # Reachable at http://<any-node-public-ip>:30080 from Locust.
 apiVersion: v1

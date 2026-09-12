@@ -11,6 +11,7 @@ spec:
       labels: {app: listing}
       annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8000"}
     spec:
+      imagePullSecrets: [{name: ghcr-pull}]
       containers:
         - name: listing
           image: ghcr.io/${GHCR_USER}/carflow-listing:${IMAGE_TAG}

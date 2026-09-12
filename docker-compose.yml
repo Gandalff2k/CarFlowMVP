@@ -1,7 +1,16 @@
 services:
   postgres:
     image: postgres:16-alpine
-    command: ["postgres", "-c", "wal_level=logical"]
+    # max_connections/shared_buffers default to stock Postgres values
+    # locally; the Hetzner infra VM overrides both (bootstrap-infra.sh) —
+    # at max HPA scale-out, auth+listing+booking+payment+admin+notification
+    # pooled connections (SQLAlchemy's default pool_size=5 + max_overflow=10
+    # per pod, no override in shared/db.py) sum to ~225, above the stock
+    # max_connections=100 — that would fail connections outright under load,
+    # not just run slow.
+    command: ["postgres", "-c", "wal_level=logical",
+              "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-100}",
+              "-c", "shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}"]
     environment:
       POSTGRES_USER: carflow
       POSTGRES_PASSWORD: carflow
@@ -85,7 +94,10 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      # 512m default matches local dev's modest data volume; the Hetzner
+      # infra VM overrides this larger since it has RAM to spare and a
+      # load test pushes real search-query volume through it.
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s

@@ -12,9 +12,21 @@ still checks the token itself), so this reuses whichever host was seeded
 first by seed_vehicles.py; any authenticated user works for the ingest path
 itself, ownership isn't checked at that layer.
 
+At real fleet scale (thousands of vehicles), connecting them all in the
+same instant is its own artifact — a connection-storm the loadgen VM and
+Kong both have to absorb in one moment, which real vehicles never do and
+which isn't the thing this test is trying to measure. `--ramp-seconds`
+staggers connection starts evenly across that window instead, matching how
+Locust's own `--spawn-rate` ramps HTTP users.
+
+Also raises this process's own open-file limit — thousands of concurrent
+WebSocket sockets will hit the default 1024 (`ulimit -n`) long before
+hitting any real capacity limit, and that failure looks like the *service*
+falling over if you don't know to check it first.
+
 Usage:
     python telemetry_load.py --kong-url http://<agent-public-ip>:30080 \\
-        --vehicles 100 --rate-hz 1 --duration-seconds 120
+        --vehicles 3000 --rate-hz 1 --ramp-seconds 60 --duration-seconds 300
 """
 
 import argparse
@@ -28,6 +40,11 @@ from pathlib import Path
 
 import httpx
 import websockets
+
+try:
+    import resource   # POSIX only — the loadgen VM is Linux; a Windows dev
+except ImportError:    # box just skips the open-file-limit raise.
+    resource = None
 
 SEED_FILE = Path(__file__).parent / "seed_data.json"
 
@@ -47,9 +64,29 @@ async def get_any_token(kong_url: str) -> str:
         return response.json()["access_token"]
 
 
+def raise_open_file_limit() -> None:
+    if resource is None:
+        return
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target = min(hard, 65536)
+    if soft < target:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+    if target < 65536:
+        print(f"warning: open-file hard limit is only {hard} — raise it in "
+              f"/etc/security/limits.conf on the loadgen VM for vehicle counts in the thousands")
+
+
 async def stream_vehicle(
-    *, ws_url: str, token: str, vehicle_id: str, rate_hz: float, duration_seconds: int, results: dict
+    *,
+    ws_url: str,
+    token: str,
+    vehicle_id: str,
+    rate_hz: float,
+    duration_seconds: int,
+    start_delay: float,
+    results: dict,
 ) -> None:
+    await asyncio.sleep(start_delay)
     uri = f"{ws_url}/telemetry/ingest/{vehicle_id}?token={token}"
     lat, lng = 40.7128 + random.uniform(-1, 1), -74.0060 + random.uniform(-1, 1)
     sent = 0
@@ -80,11 +117,13 @@ async def stream_vehicle(
 
 
 async def main(args: argparse.Namespace) -> None:
+    raise_open_file_limit()
     token = await get_any_token(args.kong_url)
     ws_url = args.kong_url.replace("http://", "ws://").replace("https://", "wss://")
     vehicle_ids = [str(uuid.uuid4()) for _ in range(args.vehicles)]
 
-    print(f"Streaming {args.vehicles} vehicles at {args.rate_hz} Hz for {args.duration_seconds}s...")
+    print(f"Streaming {args.vehicles} vehicles at {args.rate_hz} Hz, ramped over "
+          f"{args.ramp_seconds}s, {args.duration_seconds}s each once connected...")
     results: dict[str, dict] = {}
     start = time.monotonic()
     await asyncio.gather(
@@ -95,9 +134,10 @@ async def main(args: argparse.Namespace) -> None:
                 vehicle_id=vid,
                 rate_hz=args.rate_hz,
                 duration_seconds=args.duration_seconds,
+                start_delay=(i / max(len(vehicle_ids), 1)) * args.ramp_seconds,
                 results=results,
             )
-            for vid in vehicle_ids
+            for i, vid in enumerate(vehicle_ids)
         )
     )
     elapsed = time.monotonic() - start
@@ -114,7 +154,8 @@ async def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kong-url", required=True)
-    parser.add_argument("--vehicles", type=int, default=50)
+    parser.add_argument("--vehicles", type=int, default=3000)
     parser.add_argument("--rate-hz", type=float, default=1.0)
-    parser.add_argument("--duration-seconds", type=int, default=120)
+    parser.add_argument("--ramp-seconds", type=int, default=60)
+    parser.add_argument("--duration-seconds", type=int, default=300)
     asyncio.run(main(parser.parse_args()))

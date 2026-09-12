@@ -24,6 +24,16 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 cd ~/carflow
 export KAFKA_EXTERNAL_ADVERTISED_HOST="$INFRA_PRIVATE_IP"
+# infra VM is ccx43 (64GB dedicated) — tuned so Postgres/ES don't become
+# the artificial bottleneck the bigger load test is trying to avoid.
+# ES heap stays well under 50% of host RAM (Elasticsearch's own guidance —
+# the rest is for Lucene's off-heap segment cache); Postgres's
+# max_connections covers the ~225-connection worst case at max HPA
+# scale-out with real headroom, shared_buffers at the usual ~25%-of-RAM
+# rule of thumb (this MVP's data volume doesn't need more).
+export ES_JAVA_OPTS="-Xms8g -Xmx8g"
+export POSTGRES_MAX_CONNECTIONS="300"
+export POSTGRES_SHARED_BUFFERS="16GB"
 docker compose up -d postgres kafka debezium redis mongo elasticsearch
 
 echo "waiting for kafka to become healthy..."
