@@ -5,7 +5,7 @@
  11 services with telematics from Teltonika trackers over TCP (Codec 8 in,
  Codec 12 commands out), a violation detector measured against ground truth
  (precision  over 85%, recall 95%), and 784 unit + 318 integration tests.
- I can give access to the private repository or show a demo on request ifmyou are a recruiter.
+ I can give access to the private repository or show a demo on request if you are a recruiter.
 
 MVP for peer-to-peer car-sharing backend, built as a reference microservices project.
 At this stage the point isn't rich business logic - the booking rules are deliberately
