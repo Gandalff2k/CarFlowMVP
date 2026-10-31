@@ -3,7 +3,7 @@
  **Note:** this is the early MVP of CarFlow. The full version is my diploma
  project and stays private until the defense in 2027. It grew into
  11 services with telematics from Teltonika trackers over TCP (Codec 8 in,
- Codec 12 commands out), a violation detector measured against ground truth
+ Codec 12 commands out) with service rebuild in Golang, a violation detector measured against ground truth
  (precision  over 85%, recall 95%), and 784 unit + 318 integration tests.
  I can give access to the private repository or show a demo on request if you are a recruiter.
 
